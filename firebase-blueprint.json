@@ -1,0 +1,105 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "A user of the CampusBook system (Mahasiswa, Dosen, or Admin)",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Firebase Auth UID" },
+        "email": { "type": "string", "format": "email" },
+        "name": { "type": "string" },
+        "role": { "type": "string", "enum": ["mahasiswa", "dosen", "admin"] },
+        "identifier": { "type": "string", "description": "NIM or NIDN" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "name", "role", "createdAt"]
+    },
+    "Room": {
+      "title": "Room",
+      "description": "A physical room available for booking",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "building": { "type": "string" },
+        "floor": { "type": "number" },
+        "capacity": { "type": "number" },
+        "facilities": { "type": "array", "items": { "type": "string" } },
+        "status": { "type": "string", "enum": ["available", "maintenance"] },
+        "imageUrl": { "type": "string" },
+        "description": { "type": "string" },
+        "rules": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "building", "floor", "capacity", "status", "createdAt"]
+    },
+    "Booking": {
+      "title": "Booking",
+      "description": "A reservation for a room",
+      "type": "object",
+      "properties": {
+        "roomId": { "type": "string" },
+        "roomName": { "type": "string" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "userRole": { "type": "string" },
+        "startTime": { "type": "string", "format": "date-time" },
+        "endTime": { "type": "string", "format": "date-time" },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected", "cancelled"] },
+        "reason": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["roomId", "userId", "userName", "userRole", "startTime", "endTime", "status", "reason", "createdAt"]
+    },
+    "Issue": {
+      "title": "Issue",
+      "description": "A reported issue for a room",
+      "type": "object",
+      "properties": {
+        "roomId": { "type": "string" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "description": { "type": "string" },
+        "status": { "type": "string", "enum": ["reported", "in-progress", "resolved"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["roomId", "userId", "description", "status", "createdAt"]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "A notification for a user",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "type": { "type": "string", "enum": ["reminder", "approved", "rejected", "info"] },
+        "isRead": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "meta": { "type": "string" }
+      },
+      "required": ["userId", "title", "message", "type", "isRead", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "Stores user profiles and roles"
+    },
+    "/rooms/{roomId}": {
+      "schema": { "$ref": "#/entities/Room" },
+      "description": "Stores room master data"
+    },
+    "/bookings/{bookingId}": {
+      "schema": { "$ref": "#/entities/Booking" },
+      "description": "Stores room reservations"
+    },
+    "/issues/{issueId}": {
+      "schema": { "$ref": "#/entities/Issue" },
+      "description": "Stores reported issues for rooms"
+    },
+    "/notifications/{notificationId}": {
+      "schema": { "$ref": "#/entities/Notification" },
+      "description": "Stores user notifications"
+    }
+  }
+}

@@ -1,0 +1,231 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    // Collection: users
+    // Document ID: {userId}
+    // Fields:
+    //   - uid: string (required, immutable)
+    //   - email: string (required, immutable)
+    //   - name: string (required)
+    //   - role: string (required, enum: ['mahasiswa', 'dosen', 'admin'])
+    //   - identifier: string (optional)
+    //   - createdAt: timestamp (required, immutable)
+    //
+    // Collection: rooms
+    // Document ID: {roomId}
+    // Fields:
+    //   - name: string (required)
+    //   - building: string (required)
+    //   - floor: number (required)
+    //   - capacity: number (required)
+    //   - facilities: list (optional)
+    //   - status: string (required, enum: ['available', 'maintenance'])
+    //   - imageUrl: string (optional)
+    //   - description: string (optional)
+    //   - rules: string (optional)
+    //   - createdAt: timestamp (required, immutable)
+    //
+    // Collection: bookings
+    // Document ID: {bookingId}
+    // Fields:
+    //   - roomId: string (required, immutable)
+    //   - roomName: string (optional)
+    //   - userId: string (required, immutable)
+    //   - userName: string (required)
+    //   - userRole: string (required)
+    //   - startTime: timestamp (required)
+    //   - endTime: timestamp (required)
+    //   - status: string (required, enum: ['pending', 'approved', 'rejected', 'cancelled'])
+    //   - reason: string (required)
+    //   - createdAt: timestamp (required, immutable)
+    //
+    // Collection: issues
+    // Document ID: {issueId}
+    // Fields:
+    //   - roomId: string (required, immutable)
+    //   - userId: string (required, immutable)
+    //   - userName: string (optional)
+    //   - description: string (required)
+    //   - status: string (required, enum: ['reported', 'in-progress', 'resolved'])
+    //   - createdAt: timestamp (required, immutable)
+    //
+    // Collection: notifications
+    // Document ID: {notificationId}
+    // Fields:
+    //   - userId: string (required, immutable)
+    //   - title: string (required)
+    //   - message: string (required)
+    //   - type: string (required, enum: ['reminder', 'approved', 'rejected', 'info'])
+    //   - isRead: boolean (required)
+    //   - createdAt: timestamp (required, immutable)
+    //   - meta: string (optional)
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && (
+        request.auth.token.email == "gama96954@gmail.com" ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'
+      );
+    }
+
+    function hasOnlyAllowedFields(allowedFields) {
+      return request.resource.data.keys().hasOnly(allowedFields);
+    }
+
+    function hasRequiredFields(requiredFields) {
+      return request.resource.data.keys().hasAll(requiredFields);
+    }
+
+    function areImmutableFieldsUnchanged(fields) {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(fields);
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+    function isValidUser(data) {
+      return hasOnlyAllowedFields(['uid', 'email', 'name', 'role', 'identifier', 'createdAt']) &&
+             hasRequiredFields(['uid', 'email', 'name', 'role', 'createdAt']) &&
+             data.uid is string && data.uid.size() > 0 && data.uid.size() < 128 &&
+             data.email is string && isValidEmail(data.email) && data.email.size() < 100 &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.role in ['mahasiswa', 'dosen', 'admin'] &&
+             (!('identifier' in data) || (data.identifier is string && data.identifier.size() < 50)) &&
+             data.createdAt is timestamp;
+    }
+
+    function isValidRoom(data) {
+      return hasOnlyAllowedFields(['name', 'building', 'floor', 'capacity', 'facilities', 'status', 'imageUrl', 'description', 'rules', 'createdAt', 'lastBookingUpdate']) &&
+             hasRequiredFields(['name', 'building', 'floor', 'capacity', 'status', 'createdAt']) &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.building is string && data.building.size() > 0 && data.building.size() < 100 &&
+             data.floor is number &&
+             data.capacity is number && data.capacity > 0 &&
+             (!('facilities' in data) || (data.facilities is list && data.facilities.size() <= 50)) &&
+             data.status in ['available', 'maintenance'] &&
+             (!('imageUrl' in data) || (data.imageUrl is string && data.imageUrl.size() < 1000)) &&
+             (!('description' in data) || (data.description is string && data.description.size() < 2000)) &&
+             (!('rules' in data) || (data.rules is string && data.rules.size() < 2000)) &&
+             data.createdAt is timestamp &&
+             (!('lastBookingUpdate' in data) || data.lastBookingUpdate is timestamp);
+    }
+
+    function isValidBooking(data) {
+      return hasOnlyAllowedFields(['roomId', 'roomName', 'userId', 'userName', 'userRole', 'start_at', 'end_at', 'startTime', 'endTime', 'status', 'reason', 'rejectionReason', 'createdAt']) &&
+             hasRequiredFields(['roomId', 'userId', 'userName', 'userRole', 'status', 'reason', 'createdAt']) &&
+             data.roomId is string &&
+             (!('roomName' in data) || data.roomName is string) &&
+             data.userId is string &&
+             data.userName is string &&
+             data.userRole is string &&
+             (!('start_at' in data) || data.start_at is string) &&
+             (!('end_at' in data) || data.end_at is string) &&
+             (!('startTime' in data) || data.startTime is string || data.startTime is timestamp) &&
+             (!('endTime' in data) || data.endTime is string || data.endTime is timestamp) &&
+             data.status in ['pending', 'approved', 'rejected', 'cancelled'] &&
+             data.reason is string &&
+             (!('rejectionReason' in data) || data.rejectionReason is string) &&
+             data.createdAt is timestamp;
+    }
+
+    function isValidIssue(data) {
+      return hasOnlyAllowedFields(['roomId', 'userId', 'userName', 'description', 'status', 'createdAt']) &&
+             hasRequiredFields(['roomId', 'userId', 'description', 'status', 'createdAt']) &&
+             data.roomId is string && data.roomId.size() > 0 && data.roomId.size() < 100 &&
+             data.userId is string && data.userId.size() > 0 && data.userId.size() < 128 &&
+             (!('userName' in data) || (data.userName is string && data.userName.size() < 100)) &&
+             data.description is string && data.description.size() > 0 && data.description.size() < 2000 &&
+             data.status in ['reported', 'in-progress', 'resolved'] &&
+             data.createdAt is timestamp;
+    }
+
+    function isValidNotification(data) {
+      return hasOnlyAllowedFields(['userId', 'title', 'message', 'type', 'isRead', 'createdAt', 'meta', 'targetRole']) &&
+             hasRequiredFields(['title', 'message', 'type', 'isRead', 'createdAt']) &&
+             (!('userId' in data) || (data.userId is string && data.userId.size() > 0 && data.userId.size() < 128)) &&
+             (!('targetRole' in data) || (data.targetRole is string && data.targetRole in ['mahasiswa', 'dosen', 'admin'])) &&
+             data.title is string && data.title.size() > 0 && data.title.size() < 200 &&
+             data.message is string && data.message.size() > 0 && data.message.size() < 1000 &&
+             data.type in ['reminder', 'approved', 'rejected', 'info', 'warning'] &&
+             data.isRead is bool &&
+             (!('meta' in data) || (data.meta is string && data.meta.size() < 500)) &&
+             data.createdAt is timestamp;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+    match /users/{userId} {
+      allow read: if isAuthenticated() && (isOwner(userId) || isAdmin());
+      allow create: if isAuthenticated() && isOwner(userId) && isValidUser(request.resource.data) &&
+                    request.resource.data.uid == request.auth.uid;
+      allow update: if isAuthenticated() && isValidUser(request.resource.data) &&
+                    areImmutableFieldsUnchanged(['uid', 'email', 'createdAt']) &&
+                    ((isOwner(userId) && areImmutableFieldsUnchanged(['role'])) || isAdmin());
+      allow delete: if isAdmin();
+    }
+
+    match /rooms/{roomId} {
+      allow read: if isAuthenticated();
+      allow create: if isAdmin() && isValidRoom(request.resource.data);
+      allow update: if (isAdmin() && isValidRoom(request.resource.data) && areImmutableFieldsUnchanged(['createdAt'])) ||
+                    (isAuthenticated() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastBookingUpdate']) && request.resource.data.lastBookingUpdate is timestamp);
+      allow delete: if isAdmin();
+    }
+
+    match /bookings/{bookingId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidBooking(request.resource.data) &&
+                    request.resource.data.userId == request.auth.uid &&
+                    request.resource.data.status == 'pending';
+      allow update: if isAuthenticated() && isValidBooking(request.resource.data) &&
+                    areImmutableFieldsUnchanged(['roomId', 'userId', 'createdAt']) &&
+                    (
+                      (resource.data.userId == request.auth.uid && areImmutableFieldsUnchanged(['userName', 'userRole', 'start_at', 'end_at', 'reason']) && request.resource.data.status == 'cancelled') ||
+                      isAdmin()
+                    );
+      allow delete: if isAdmin();
+    }
+
+    match /issues/{issueId} {
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isAuthenticated() && isValidIssue(request.resource.data) &&
+                    request.resource.data.userId == request.auth.uid &&
+                    request.resource.data.status == 'reported';
+      allow update: if isAdmin() && isValidIssue(request.resource.data) &&
+                    areImmutableFieldsUnchanged(['roomId', 'userId', 'description', 'createdAt']);
+      allow delete: if isAdmin();
+    }
+
+    match /notifications/{notificationId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidNotification(request.resource.data) &&
+                    (isAdmin() || ('userId' in request.resource.data && request.resource.data.userId == request.auth.uid) || ('targetRole' in request.resource.data && request.resource.data.targetRole == 'admin'));
+      allow update: if isAuthenticated() && isValidNotification(request.resource.data) &&
+                    areImmutableFieldsUnchanged(['userId', 'title', 'message', 'type', 'createdAt', 'meta', 'targetRole']) &&
+                    (
+                      ('userId' in resource.data && resource.data.userId == request.auth.uid) ||
+                      ('targetRole' in resource.data && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == resource.data.targetRole)
+                    );
+      allow delete: if isAdmin();
+    }
+  }
+}
