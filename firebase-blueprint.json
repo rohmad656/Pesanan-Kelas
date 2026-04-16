@@ -9,10 +9,43 @@
         "email": { "type": "string", "format": "email" },
         "name": { "type": "string" },
         "role": { "type": "string", "enum": ["mahasiswa", "dosen", "admin"] },
-        "identifier": { "type": "string", "description": "NIM or NIDN" },
+        "nim": { "type": "string", "description": "NIM or NIDN" },
+        "whatsapp": { "type": "string" },
+        "division": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "profileCompleted": { "type": "boolean" },
+        "notifPortal": { "type": "boolean" },
+        "notifEmail": { "type": "boolean" },
+        "notifWhatsApp": { "type": "boolean" },
+        "reminderMinutes": { "type": "number" },
+        "deleted": { "type": "boolean" },
+        "deletedAt": { "type": "string", "format": "date-time" },
+        "deletedBy": { "type": "string" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["uid", "email", "name", "role", "createdAt"]
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "A record of administrative actions",
+      "type": "object",
+      "properties": {
+        "action": { "type": "string" },
+        "targetUid": { "type": "string" },
+        "performedBy": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "details": { "type": "string" }
+      },
+      "required": ["action", "performedBy", "timestamp"]
+    },
+    "RoleMapping": {
+      "title": "RoleMapping",
+      "description": "Pre-defined role for a specific email",
+      "type": "object",
+      "properties": {
+        "role": { "type": "string", "enum": ["mahasiswa", "dosen", "admin"] }
+      },
+      "required": ["role"]
     },
     "Room": {
       "title": "Room",
@@ -46,6 +79,7 @@
         "endTime": { "type": "string", "format": "date-time" },
         "status": { "type": "string", "enum": ["pending", "approved", "rejected", "cancelled"] },
         "reason": { "type": "string" },
+        "remindersSent": { "type": "array", "items": { "type": "string" } },
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["roomId", "userId", "userName", "userRole", "startTime", "endTime", "status", "reason", "createdAt"]
@@ -100,6 +134,14 @@
     "/notifications/{notificationId}": {
       "schema": { "$ref": "#/entities/Notification" },
       "description": "Stores user notifications"
+    },
+    "/audit_logs/{logId}": {
+      "schema": { "$ref": "#/entities/AuditLog" },
+      "description": "Stores administrative audit logs"
+    },
+    "/role_mappings/{email}": {
+      "schema": { "$ref": "#/entities/RoleMapping" },
+      "description": "Stores pre-defined roles for specific emails"
     }
   }
 }

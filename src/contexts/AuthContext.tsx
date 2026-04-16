@@ -1,7 +1,8 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { User as FirebaseUser, onAuthStateChanged, signInWithPopup, signOut, signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
-import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { User as FirebaseUser, onAuthStateChanged, signInWithPopup, signOut, signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail, updateEmail, updateProfile as updateAuthProfile, confirmPasswordReset, verifyPasswordResetCode } from 'firebase/auth';
+import { doc, getDoc, setDoc, serverTimestamp, collection, query, where, getDocs, updateDoc, onSnapshot } from 'firebase/firestore';
 import { auth, db, googleProvider, handleFirestoreError, OperationType } from '../lib/firebase';
+import toast from 'react-hot-toast';
 
 export type Role = 'mahasiswa' | 'dosen' | 'admin';
 
@@ -10,18 +11,31 @@ export interface UserProfile {
   email: string;
   name: string;
   role: Role;
-  identifier?: string;
+  nim?: string;
+  whatsapp?: string;
+  division?: string;
+  photoURL?: string;
+  profileCompleted?: boolean;
+  notifPortal?: boolean;
+  notifEmail?: boolean;
+  notifWhatsApp?: boolean;
+  reminderMinutes?: number;
   createdAt: any;
 }
 
 interface AuthContextType {
   user: FirebaseUser | null;
   profile: UserProfile | null;
+  pendingRegistration: { uid: string, email: string, name: string, photoURL: string } | null;
   loading: boolean;
-  login: (role: Role, isRegistering?: boolean) => Promise<void>;
+  login: (intendedRole?: Role, existingUser?: FirebaseUser) => Promise<{ isNewUser: boolean }>;
+  completeRegistration: (data: Partial<UserProfile>) => Promise<void>;
   emailLogin: (emailOrId: string, password: string) => Promise<void>;
   emailRegister: (emailOrId: string, password: string, name: string, role: Role) => Promise<void>;
+  updateUserProfile: (data: Partial<UserProfile>) => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
+  confirmNewPassword: (code: string, password: string) => Promise<void>;
+  verifyResetCode: (code: string) => Promise<string>;
   logout: () => Promise<void>;
 }
 
@@ -30,36 +44,53 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [pendingRegistration, setPendingRegistration] = useState<{ uid: string, email: string, name: string, photoURL: string } | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+    let unsubscribeProfile: (() => void) | null = null;
+
+    const unsubscribeAuth = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser) {
-        try {
-          const docRef = doc(db, 'users', currentUser.uid);
-          const docSnap = await getDoc(docRef);
+        setUser(currentUser);
+        
+        // Listen to profile changes in real-time
+        const docRef = doc(db, 'users', currentUser.uid);
+        unsubscribeProfile = onSnapshot(docRef, (docSnap) => {
           if (docSnap.exists()) {
-            setUser(currentUser);
-            setProfile(docSnap.data() as UserProfile);
+            const data = docSnap.data() as UserProfile & { deleted?: boolean };
+            if (data.deleted) {
+              // If user is soft-deleted, sign them out
+              signOut(auth);
+              setProfile(null);
+              setUser(null);
+              toast.error('Akun Anda telah dihapus oleh administrator.');
+            } else {
+              setProfile(data as UserProfile);
+            }
           } else {
-            // User exists in Auth but not in Firestore yet.
-            // It might be in the process of being created by the login function.
-            setUser(currentUser);
-            // We don't set profile to null here because the login function might be setting it.
+            setProfile(null);
           }
-        } catch (error) {
+          setLoading(false);
+        }, (error) => {
           handleFirestoreError(error, OperationType.GET, `users/${currentUser.uid}`);
-          setUser(null);
-          setProfile(null);
-        }
+          setLoading(false);
+        });
       } else {
         setUser(null);
         setProfile(null);
+        if (unsubscribeProfile) {
+          unsubscribeProfile();
+          unsubscribeProfile = null;
+        }
+        setLoading(false);
       }
-      setLoading(false);
     });
 
-    return () => unsubscribe();
+    return () => {
+      unsubscribeAuth();
+      if (unsubscribeProfile) unsubscribeProfile();
+    };
   }, []);
 
   const formatEmail = (emailOrId: string) => {
@@ -67,16 +98,35 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const emailLogin = async (emailOrId: string, password: string) => {
-    const email = formatEmail(emailOrId);
-    const result = await signInWithEmailAndPassword(auth, email, password);
+    let emailToUse = emailOrId;
+    
+    // Support multi-identifier login (Email or NIM/NIP)
+    if (!emailOrId.includes('@')) {
+      // Search by nim
+      const q = query(collection(db, 'users'), where('nim', '==', emailOrId));
+      const querySnapshot = await getDocs(q);
+      if (!querySnapshot.empty) {
+        emailToUse = querySnapshot.docs[0].data().email;
+      } else {
+        // Fallback to default campus email format
+        emailToUse = `${emailOrId}@campus.ac.id`;
+      }
+    } else {
+      // Even if it's an email, check if it's a secondary email or if it matches a profile
+      const q = query(collection(db, 'users'), where('email', '==', emailOrId));
+      const querySnapshot = await getDocs(q);
+      if (!querySnapshot.empty) {
+        emailToUse = querySnapshot.docs[0].data().email;
+      }
+    }
+
+    const result = await signInWithEmailAndPassword(auth, emailToUse, password);
     try {
       const docRef = doc(db, 'users', result.user.uid);
       const docSnap = await getDoc(docRef);
-      if (docSnap.exists()) {
-        setProfile(docSnap.data() as UserProfile);
-      } else {
+      if (!docSnap.exists()) {
         await signOut(auth);
-        const error: any = new Error("Akun belum terdaftar. Silakan daftar terlebih dahulu.");
+        const error: any = new Error("Akun belum terdaftar di database. Silakan hubungi admin.");
         error.code = 'custom/user-not-found';
         throw error;
       }
@@ -87,6 +137,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const emailRegister = async (emailOrId: string, password: string, name: string, role: Role) => {
+    // Check if NIM already exists
+    if (!emailOrId.includes('@')) {
+      const q = query(collection(db, 'users'), where('nim', '==', emailOrId));
+      const querySnapshot = await getDocs(q);
+      if (!querySnapshot.empty) {
+        const error: any = new Error("NIM/NIP ini sudah terdaftar. Silakan masuk menggunakan email yang terkait.");
+        error.code = 'custom/nim-already-in-use';
+        throw error;
+      }
+    }
+
     const email = formatEmail(emailOrId);
     const result = await createUserWithEmailAndPassword(auth, email, password);
     const currentUser = result.user;
@@ -96,18 +157,89 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       email: currentUser.email || email,
       name: name,
       role: role,
+      profileCompleted: false,
+      notifPortal: true,
+      notifEmail: true,
+      notifWhatsApp: false,
+      reminderMinutes: 30,
       createdAt: serverTimestamp(),
     };
     
     if (!emailOrId.includes('@')) {
-      newProfile.identifier = emailOrId;
+      newProfile.nim = emailOrId;
     }
     
     try {
       await setDoc(doc(db, 'users', currentUser.uid), newProfile);
-      setProfile(newProfile as UserProfile);
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, `users/${currentUser.uid}`);
+    }
+  };
+
+  const updateUserProfile = async (data: Partial<UserProfile>) => {
+    if (!auth.currentUser || !profile) return;
+
+    try {
+      const docRef = doc(db, 'users', auth.currentUser.uid);
+      
+      // If updating email, also update in Firebase Auth
+      if (data.email && data.email !== profile.email) {
+        // Check if email is already used by another user in Firestore
+        const q = query(collection(db, 'users'), where('email', '==', data.email));
+        const snap = await getDocs(q);
+        if (!snap.empty) {
+          throw new Error('Email sudah digunakan oleh akun lain.');
+        }
+        await updateEmail(auth.currentUser, data.email);
+      }
+
+      // If updating nim, check uniqueness
+      if (data.nim && data.nim !== profile.nim) {
+        const q = query(collection(db, 'users'), where('nim', '==', data.nim));
+        const snap = await getDocs(q);
+        if (!snap.empty) {
+          throw new Error('NIM/NIP sudah digunakan oleh akun lain.');
+        }
+      }
+
+      // If updating name, also update in Auth display name
+      if (data.name && data.name !== profile.name) {
+        await updateAuthProfile(auth.currentUser, { displayName: data.name });
+      }
+
+      // Check if profile is now completed
+      const updatedProfile = { ...profile, ...data };
+      
+      // Required fields for all roles
+      const hasBaseFields = !!(
+        updatedProfile.name && 
+        updatedProfile.email && 
+        updatedProfile.nim && 
+        updatedProfile.whatsapp &&
+        updatedProfile.role
+      );
+
+      // Division is only required for non-students if it was already part of the schema, 
+      // but based on the request, we just need NIM + WA + Email.
+      // We'll stick to the core fields requested for "profileCompleted".
+      const isCompleted = hasBaseFields;
+
+      try {
+        // Use setDoc with merge: true as requested for profile updates
+        await setDoc(docRef, {
+          ...data,
+          profileCompleted: isCompleted,
+          updatedAt: serverTimestamp()
+        }, { merge: true });
+      } catch (error) {
+        handleFirestoreError(error, OperationType.UPDATE, `users/${auth.currentUser.uid}`);
+      }
+    } catch (error: any) {
+      console.error("Update profile failed", error);
+      if (error.code === 'auth/requires-recent-login') {
+        throw new Error('Sesi Anda telah berakhir. Silakan keluar dan masuk kembali untuk mengubah email.');
+      }
+      throw error;
     }
   };
 
@@ -116,36 +248,88 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await sendPasswordResetEmail(auth, formattedEmail);
   };
 
-  const login = async (selectedRole: Role, isRegistering: boolean = false) => {
+  const confirmNewPassword = async (code: string, password: string) => {
+    await confirmPasswordReset(auth, code, password);
+  };
+
+  const verifyResetCode = async (code: string) => {
+    return await verifyPasswordResetCode(auth, code);
+  };
+
+  const login = async (intendedRole?: Role, existingUser?: FirebaseUser) => {
     try {
-      const result = await signInWithPopup(auth, googleProvider);
-      const currentUser = result.user;
+      let currentUser = existingUser;
+      
+      if (!currentUser) {
+        const result = await signInWithPopup(auth, googleProvider);
+        currentUser = result.user;
+      }
       
       const docRef = doc(db, 'users', currentUser.uid);
       const docSnap = await getDoc(docRef);
       
       if (!docSnap.exists()) {
-        const newProfile: Partial<UserProfile> = {
+        // Store pending registration info instead of creating doc immediately
+        setPendingRegistration({
           uid: currentUser.uid,
           email: currentUser.email || '',
-          name: currentUser.displayName || 'Unknown User',
-          role: selectedRole,
-          createdAt: serverTimestamp(),
-        };
-        
-        // Non-blocking write to speed up login
-        setDoc(docRef, newProfile).catch(err => {
-          console.error("Failed to write user profile in background:", err);
+          name: currentUser.displayName || '',
+          photoURL: currentUser.photoURL || '',
         });
-        
-        setProfile(newProfile as UserProfile);
-      } else {
-        setProfile(docSnap.data() as UserProfile);
+        return { isNewUser: true };
       }
-    } catch (error) {
+      
+      setPendingRegistration(null);
+      return { isNewUser: false };
+    } catch (error: any) {
       console.error("Login failed", error);
       throw error;
     }
+  };
+
+  const completeRegistration = async (data: Partial<UserProfile>) => {
+    if (!pendingRegistration) throw new Error("No pending registration found");
+
+    const email = pendingRegistration.email;
+    let finalRole: Role = data.role || 'mahasiswa';
+
+    // Domain-based role detection (Security)
+    if (email.endsWith('@student.uin-malang.ac.id')) {
+      finalRole = 'mahasiswa';
+    } else {
+      try {
+        const mappingRef = doc(db, 'role_mappings', email);
+        const mappingSnap = await getDoc(mappingRef);
+        if (mappingSnap.exists()) {
+          finalRole = mappingSnap.data().role;
+        } else if (finalRole === 'admin' && email !== "gama96954@gmail.com") {
+          finalRole = email.endsWith('@uin-malang.ac.id') ? 'dosen' : 'mahasiswa';
+        }
+      } catch (e) {
+        console.warn("Failed to check role mapping:", e);
+      }
+    }
+
+    const newProfile: UserProfile = {
+      uid: pendingRegistration.uid,
+      email: email,
+      name: data.name || pendingRegistration.name,
+      role: finalRole,
+      nim: data.nim || '',
+      whatsapp: data.whatsapp || '',
+      division: data.division || '',
+      photoURL: pendingRegistration.photoURL,
+      profileCompleted: true, // Since they are filling the form now
+      notifPortal: true,
+      notifEmail: true,
+      notifWhatsApp: false,
+      reminderMinutes: 30,
+      createdAt: serverTimestamp(),
+    };
+
+    await setDoc(doc(db, 'users', pendingRegistration.uid), newProfile);
+    setProfile(newProfile);
+    setPendingRegistration(null);
   };
 
   const logout = async () => {
@@ -153,7 +337,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   return (
-    <AuthContext.Provider value={{ user, profile, loading, login, emailLogin, emailRegister, resetPassword, logout }}>
+    <AuthContext.Provider value={{ user, profile, pendingRegistration, loading, login, completeRegistration, emailLogin, emailRegister, updateUserProfile, resetPassword, confirmNewPassword, verifyResetCode, logout }}>
       {children}
     </AuthContext.Provider>
   );

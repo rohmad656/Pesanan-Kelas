@@ -1,5 +1,5 @@
 {
   "name": "E-Booking Class",
-  "description": "",
-  "requestFramePermissions": []
+  "description": "Sistem pemesanan ruangan dan jadwal perkuliahan kampus yang efisien dan terintegrasi.",
+  "requestFramePermissions": ["camera"]
 }

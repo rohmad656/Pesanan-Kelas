@@ -2,14 +2,18 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth, Role } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { ArrowLeft, Mail, Lock, Eye, EyeOff, LogIn, User, Loader2, ShieldCheck, AlertCircle } from 'lucide-react';
+import { auth, googleProvider, db } from '../lib/firebase';
+import { signInWithPopup, User as FirebaseUser } from 'firebase/auth';
+import { doc, getDoc } from 'firebase/firestore';
+import { ArrowLeft, Mail, Lock, Eye, EyeOff, LogIn, User, Loader2, ShieldCheck, AlertCircle, Clock } from 'lucide-react';
 import { cn } from '../lib/utils';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'motion/react';
+import { GoogleButton } from '../components/GoogleButton';
 
 export default function Login() {
   const [role, setRole] = useState<Role>('mahasiswa');
-  const { login, emailLogin, emailRegister, resetPassword } = useAuth();
+  const { login, emailLogin, emailRegister, resetPassword, pendingRegistration } = useAuth();
   const { setTheme } = useTheme();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
@@ -19,7 +23,12 @@ export default function Login() {
   useEffect(() => {
     // Force dark mode on login page
     setTheme('dark');
-  }, [setTheme]);
+
+    // If there's a pending registration, redirect to registration page
+    if (pendingRegistration) {
+      navigate('/daftar');
+    }
+  }, [setTheme, pendingRegistration, navigate]);
 
   const [isVisible, setIsVisible] = useState(true);
   const [exitDestination, setExitDestination] = useState<string | null>(null);
@@ -30,10 +39,12 @@ export default function Login() {
     setExitDestination(path);
     setIsVisible(false);
   };
-  const [identifier, setIdentifier] = useState('');
+  const [nim, setNim] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   // Scroll Lock for Login Modal
   useEffect(() => {
@@ -67,7 +78,7 @@ export default function Login() {
 
   const handleIdentifierChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
-    setIdentifier(val);
+    setNim(val);
     if (val && !validateEmail(val) && val.length > 5 && !val.match(/^[0-9A-Z]+$/i)) {
       setValidationError('Format email atau ID mungkin tidak valid.');
     } else {
@@ -81,27 +92,32 @@ export default function Login() {
     setError('');
     try {
       if (isForgotPassword) {
-        if (!identifier) {
+        if (!nim) {
           setError('Silakan masukkan email Anda terlebih dahulu.');
           setLoading(false);
           return;
         }
-        await resetPassword(identifier);
+        await resetPassword(nim);
         toast.success('Link reset password telah dikirim ke email Anda.');
         setIsForgotPassword(false);
       } else if (isRegistering) {
-        await emailRegister(identifier, password, name, role);
+        if (password !== confirmPassword) {
+          setError('Konfirmasi kata sandi tidak cocok.');
+          setLoading(false);
+          return;
+        }
+        await emailRegister(nim, password, name, role);
         toast.success('Berhasil mendaftar dan masuk!');
         handleExit('/dashboard');
       } else {
-        await emailLogin(identifier, password);
+        await emailLogin(nim, password);
         toast.success('Berhasil masuk!');
         handleExit('/dashboard');
       }
     } catch (err: any) {
       console.error(err);
       if (err.code === 'custom/user-not-found') {
-        setError('Email belum terdaftar, silakan daftar dulu atau gunakan login Google.');
+        setError('Akun tidak ditemukan. Pastikan Email atau NIM/NIP sudah benar.');
       } else if (err.code === 'auth/invalid-credential') {
         setError('Email belum terdaftar atau kata sandi salah. Silakan daftar dulu atau gunakan login Google.');
       } else if (err.code === 'auth/email-already-in-use') {
@@ -122,16 +138,35 @@ export default function Login() {
     }
   };
 
+  const [showRegistrationConfirm, setShowRegistrationConfirm] = useState<{ email: string, name: string, user: FirebaseUser, suggestedRole: Role } | null>(null);
+
   const handleGoogleLogin = async () => {
     setGoogleLoading(true);
     setError('');
     try {
-      await login(role, isRegistering);
-      toast.success('Berhasil masuk dengan Google!');
-      handleExit('/dashboard');
+      const result = await signInWithPopup(auth, googleProvider);
+      const currentUser = result.user;
+
+      // login() now returns isNewUser if it's a new user
+      const { isNewUser } = await login(role, currentUser);
+
+      if (isNewUser) {
+        toast.success(`Hampir selesai! Silakan lengkapi data Anda.`);
+        handleExit('/daftar');
+      } else {
+        toast.success(`Selamat datang kembali!`);
+        handleExit('/dashboard');
+      }
     } catch (err: any) {
       console.error("Google Login Error:", err);
-      setError(`Gagal masuk dengan Google: ${err.message || err.code || 'Kesalahan tidak diketahui'}`);
+      if (err.code === 'auth/popup-blocked') {
+        setError('Popup diblokir oleh browser. Silakan izinkan popup untuk situs ini dan coba lagi.');
+      } else if (err.code === 'auth/popup-closed-by-user') {
+        setGoogleLoading(false);
+        toast.error('Login dibatalkan.');
+      } else {
+        setError(`Gagal masuk dengan Google: ${err.message || err.code || 'Kesalahan tidak diketahui'}`);
+      }
     } finally {
       setGoogleLoading(false);
     }
@@ -141,12 +176,40 @@ export default function Login() {
     <div className="bg-slate-50 dark:bg-[#1E1E2F] font-sans text-slate-900 dark:text-[#F5F5F5] flex items-center justify-center min-h-screen relative overflow-hidden">
       {/* Background Decoration */}
       <div className="absolute inset-0 z-0">
-        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-brand-dark-accent-light/20 rounded-full blur-[120px]"></div>
-        <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-[#ffafd5]/20 rounded-full blur-[120px]"></div>
-        <img 
-          className="w-full h-full object-cover opacity-20 grayscale" 
+        <motion.div 
+          animate={{ 
+            scale: [1, 1.1, 1],
+            x: [0, 20, 0],
+            y: [0, -20, 0]
+          }}
+          transition={{ 
+            duration: 15, 
+            repeat: Infinity, 
+            ease: "easeInOut" 
+          }}
+          className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-brand-dark-accent-light/20 rounded-full blur-[120px]"
+        ></motion.div>
+        <motion.div 
+          animate={{ 
+            scale: [1, 1.2, 1],
+            x: [0, -30, 0],
+            y: [0, 30, 0]
+          }}
+          transition={{ 
+            duration: 18, 
+            repeat: Infinity, 
+            ease: "easeInOut" 
+          }}
+          className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-[#ffafd5]/20 rounded-full blur-[120px]"
+        ></motion.div>
+        <motion.img 
+          initial={{ scale: 1.1, opacity: 0 }}
+          animate={{ scale: 1, opacity: 0.2 }}
+          transition={{ duration: 2, ease: "easeOut" }}
+          className="w-full h-full object-cover grayscale" 
           alt="Campus architecture" 
           src="https://images.unsplash.com/photo-1562774053-701939374585?q=80&w=2086&auto=format&fit=crop" 
+          referrerPolicy="no-referrer"
         />
       </div>
 
@@ -164,61 +227,111 @@ export default function Login() {
           >
             {/* Login Modal Card */}
             <motion.div 
-              initial={{ opacity: 0, scale: 0.92, y: 20 }}
+              initial={{ opacity: 0, scale: 0.95, y: 30, filter: "blur(4px)" }}
               animate={{ 
                 opacity: 1, 
                 scale: 1, 
                 y: 0,
-                transition: { type: "spring", damping: 25, stiffness: 300 }
+                filter: "blur(0px)",
+                transition: { 
+                  type: "spring", 
+                  damping: 22, 
+                  stiffness: 140,
+                  mass: 0.8
+                }
               }}
               exit={{ 
                 opacity: 0, 
-                scale: 0.96, 
-                y: 16,
-                transition: { duration: 0.25, ease: "easeInOut" }
+                scale: 0.98, 
+                y: 10,
+                filter: "blur(4px)",
+                transition: { duration: 0.2, ease: "easeIn" }
               }}
-              className="bg-white dark:bg-[#27273A] dark:shadow-lg dark:shadow-black/20 w-[95vw] max-w-md rounded-2xl shadow-sm border border-slate-200 dark:border-[#3F3F5A]/20 overflow-hidden relative max-h-[95vh] flex flex-col"
+              className="bg-white dark:bg-[#27273A] dark:shadow-2xl dark:shadow-black/40 w-[95vw] max-w-md rounded-2xl shadow-xl border border-slate-200 dark:border-[#3F3F5A]/30 overflow-hidden relative max-h-[95vh] flex flex-col"
             >
               
               {/* Back Button */}
               <div className="absolute top-6 left-6 z-10">
-                <button onClick={() => handleExit('/')} className="flex items-center text-slate-600 dark:text-[#B4B4C8] hover:text-brand-700 dark:text-brand-dark-accent transition-all duration-300 group">
+                <button 
+                  onClick={() => {
+                    if (isForgotPassword) {
+                      setIsForgotPassword(false);
+                      setError('');
+                    } else {
+                      handleExit('/');
+                    }
+                  }} 
+                  className="flex items-center text-slate-600 dark:text-[#B4B4C8] hover:text-brand-700 dark:text-brand-dark-accent transition-all duration-300 group"
+                >
                   <ArrowLeft className="w-6 h-6 group-hover:-translate-x-1 transition-transform" />
                 </button>
               </div>
 
           {/* Modal Content */}
           <form onSubmit={handleSubmit} className="flex flex-col flex-1 overflow-hidden">
-            <div className="p-6 sm:p-8 overflow-y-auto flex-1">
+            <motion.div 
+              initial="hidden"
+              animate="visible"
+              variants={{
+                hidden: { opacity: 0 },
+                visible: {
+                  opacity: 1,
+                  transition: {
+                    staggerChildren: 0.08,
+                    delayChildren: 0.2
+                  }
+                }
+              }}
+              className="p-6 sm:p-8 overflow-y-auto flex-1"
+            >
               {/* Header */}
-              <div className="text-center mb-6 pt-4">
+              <motion.div 
+                variants={{
+                  hidden: { opacity: 0, y: 10 },
+                  visible: { opacity: 1, y: 0 }
+                }}
+                className="text-center mb-6 pt-4"
+              >
                 <h1 className="text-2xl font-extrabold text-[#3b134b] dark:text-[#F5F5F5] mb-2 tracking-tight">
                   {isForgotPassword ? 'Reset Kata Sandi' : isRegistering ? 'Daftar Akun Baru' : 'Selamat Datang Kembali'}
                 </h1>
                 <p className="text-slate-500 dark:text-[#B4B4C8] text-sm italic">
                   {isForgotPassword ? 'Masukkan email Anda untuk menerima link reset kata sandi' : isRegistering ? 'Buat akun untuk mengakses layanan kampus' : 'Masuk untuk mengelola jadwal kampus Anda'}
                 </p>
-              </div>
+              </motion.div>
 
               {/* Role Selector */}
               {!isForgotPassword && (
-                <div className="bg-slate-100 dark:bg-[#32324A] p-1 rounded-lg flex mb-8">
+                <motion.div 
+                  variants={{
+                    hidden: { opacity: 0, y: 10 },
+                    visible: { opacity: 1, y: 0 }
+                  }}
+                  className="bg-slate-100 dark:bg-[#32324A] p-1 rounded-lg flex mb-8 relative"
+                >
                   {(['mahasiswa', 'dosen', 'admin'] as Role[]).map((r) => (
                     <button
                       key={r}
                       type="button"
                       onClick={() => setRole(r)}
                       className={cn(
-                        "flex-1 py-2 px-3 text-sm font-semibold rounded-md transition-all duration-200 capitalize",
+                        "flex-1 py-2 px-3 text-sm font-semibold rounded-md transition-all duration-300 capitalize relative z-10",
                         role === r 
-                          ? "bg-[#A78BFA] text-white shadow-sm" 
+                          ? "text-white" 
                           : "text-slate-500 dark:text-[#B4B4C8] hover:text-brand-700 dark:text-brand-dark-accent"
                       )}
                     >
-                      {r === 'admin' ? 'Staf' : r}
+                      <span className="relative z-10">{r === 'admin' ? 'Staf' : r}</span>
+                      {role === r && (
+                        <motion.div
+                          layoutId="activeRole"
+                          className="absolute inset-0 bg-[#A78BFA] rounded-md shadow-sm"
+                          transition={{ type: "spring", bounce: 0.15, duration: 0.5 }}
+                        />
+                      )}
                     </button>
                   ))}
-                </div>
+                </motion.div>
               )}
 
               {error && (
@@ -247,10 +360,17 @@ export default function Login() {
               )}
 
               {/* Form Inputs */}
-              <div className="space-y-5">
-                <AnimatePresence>
+              <motion.div 
+                variants={{
+                  hidden: { opacity: 0, y: 10 },
+                  visible: { opacity: 1, y: 0 }
+                }}
+                className="space-y-5"
+              >
+                <AnimatePresence mode="wait">
                   {isRegistering && (
                     <motion.div 
+                      key="register-name"
                       initial={{ opacity: 0, height: 0 }}
                       animate={{ opacity: 1, height: 'auto' }}
                       exit={{ opacity: 0, height: 0 }}
@@ -275,16 +395,22 @@ export default function Login() {
                   )}
                 </AnimatePresence>
 
-                <div className="space-y-1.5">
-                  <label htmlFor="identifier" className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-[#B4B4C8]">{getIdentifierLabel()}</label>
+                <motion.div 
+                  key={role}
+                  initial={{ opacity: 0, x: -10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ duration: 0.3 }}
+                  className="space-y-1.5"
+                >
+                  <label htmlFor="nim" className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-[#B4B4C8]">{getIdentifierLabel()}</label>
                   <div className="relative group">
                     <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 group-focus-within:text-brand-700 dark:text-brand-dark-accent transition-colors" aria-hidden="true" />
                     <input 
-                      id="identifier"
+                      id="nim"
                       type="text"
                       required
                       autoFocus={!isRegistering}
-                      value={identifier}
+                      value={nim}
                       onChange={handleIdentifierChange}
                       className={cn(
                         "w-full pl-10 pr-4 py-3 bg-slate-50 dark:bg-[#2D2D44] border rounded-lg focus:outline-none focus:ring-1 transition-all text-slate-900 dark:text-[#F5F5F5] placeholder:text-slate-400",
@@ -300,11 +426,12 @@ export default function Login() {
                       <AlertCircle className="w-3 h-3" /> {validationError}
                     </p>
                   )}
-                </div>
+                </motion.div>
 
-                <AnimatePresence>
+                <AnimatePresence mode="wait">
                   {!isForgotPassword && (
                     <motion.div 
+                      key="password-field"
                       initial={{ opacity: 0, height: 0 }}
                       animate={{ opacity: 1, height: 'auto' }}
                       exit={{ opacity: 0, height: 0 }}
@@ -349,11 +476,51 @@ export default function Login() {
                     </motion.div>
                   )}
                 </AnimatePresence>
-              </div>
+
+                <AnimatePresence mode="wait">
+                  {isRegistering && (
+                    <motion.div 
+                      key="confirm-password"
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="space-y-1.5 overflow-hidden"
+                    >
+                      <label htmlFor="confirmPassword" className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-[#B4B4C8]">Konfirmasi Kata Sandi</label>
+                      <div className="relative group">
+                        <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 group-focus-within:text-brand-700 dark:text-brand-dark-accent transition-colors" aria-hidden="true" />
+                        <input 
+                          id="confirmPassword"
+                          type={showConfirmPassword ? 'text' : 'password'}
+                          required={isRegistering}
+                          value={confirmPassword}
+                          onChange={(e) => setConfirmPassword(e.target.value)}
+                          className="w-full pl-10 pr-10 py-3 bg-slate-50 dark:bg-[#2D2D44] border border-transparent dark:border-[#3F3F5A]/30 rounded-lg focus:outline-none focus:border-brand-400 dark:border-brand-dark-accent focus:ring-1 focus:ring-brand-dark-accent-light text-slate-900 dark:text-[#F5F5F5] placeholder:text-slate-400 transition-all"
+                          placeholder="••••••••"
+                          aria-label="Konfirmasi Kata Sandi"
+                        />
+                        <button 
+                          type="button"
+                          onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-brand-700 dark:text-brand-dark-accent transition-colors focus:outline-none focus:text-brand-700 dark:text-brand-dark-accent"
+                          aria-label={showConfirmPassword ? "Sembunyikan kata sandi" : "Tampilkan kata sandi"}
+                        >
+                          {showConfirmPassword ? <EyeOff className="w-5 h-5" aria-hidden="true" /> : <Eye className="w-5 h-5" aria-hidden="true" />}
+                        </button>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </motion.div>
 
               {/* SSO Options */}
               {!isForgotPassword && (
-                <>
+                <motion.div
+                  variants={{
+                    hidden: { opacity: 0, y: 10 },
+                    visible: { opacity: 1, y: 0 }
+                  }}
+                >
                   <div className="relative my-8">
                     <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-slate-100 dark:border-[#3F3F5A]/30"></div></div>
                     <div className="relative flex justify-center text-xs uppercase tracking-widest">
@@ -364,40 +531,26 @@ export default function Login() {
                   </div>
 
                   <div className="space-y-3">
-                    <button 
+                    <GoogleButton 
                       onClick={handleGoogleLogin}
-                      disabled={loading || googleLoading}
-                      className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-white dark:bg-[#2D2D44] border border-slate-200 dark:border-[#3F3F5A]/30 rounded-lg hover:bg-slate-50 dark:hover:bg-[#32324A] hover:scale-[1.02] hover:shadow-[0_0_10px_rgba(209,166,255,0.2)] active:scale-[0.98] transition-all group disabled:opacity-50 disabled:hover:scale-100 disabled:hover:shadow-none focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-dark-accent-light focus:ring-offset-[#20082b]"
-                      aria-label="Masuk dengan Google"
-                    >
-                      {googleLoading ? (
-                        <>
-                          <Loader2 className="w-5 h-5 animate-spin text-slate-400" />
-                          <span className="text-sm font-bold text-slate-700 dark:text-[#F5F5F5]">
-                            Menghubungkan ke Google...
-                          </span>
-                        </>
-                      ) : (
-                        <>
-                          <svg className="w-5 h-5" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                            <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"></path>
-                            <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"></path>
-                            <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"></path>
-                            <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"></path>
-                          </svg>
-                          <span className="text-sm font-bold text-slate-700 dark:text-[#F5F5F5]">
-                            Google
-                          </span>
-                        </>
-                      )}
-                    </button>
+                      loading={googleLoading}
+                      mode={isRegistering ? 'register' : 'login'}
+                      disabled={loading}
+                      label={isRegistering ? 'Daftar dengan Google' : 'Masuk dengan Google'}
+                    />
                   </div>
-                </>
+                </motion.div>
               )}
-            </div>
+            </motion.div>
 
             {/* Sticky Action Footer */}
-            <div className="p-6 border-t border-slate-200 dark:border-[#3F3F5A]/30 bg-white dark:bg-[#27273A] shrink-0">
+            <motion.div 
+              variants={{
+                hidden: { opacity: 0, y: 10 },
+                visible: { opacity: 1, y: 0 }
+              }}
+              className="p-6 border-t border-slate-200 dark:border-[#3F3F5A]/30 bg-white dark:bg-[#27273A] shrink-0"
+            >
               <button 
                 type="submit"
                 disabled={loading || !!validationError}
@@ -418,11 +571,17 @@ export default function Login() {
                 <ShieldCheck className="w-3.5 h-3.5 text-green-400/70" />
                 <span>Data Anda aman dengan enkripsi standar industri</span>
               </div>
-            </div>
+            </motion.div>
           </form>
 
           {/* Footer */}
-          <div className="bg-slate-50 dark:bg-[#32324A]/50 p-6 text-center border-t border-slate-100 dark:border-[#3F3F5A]/20">
+          <motion.div 
+            variants={{
+              hidden: { opacity: 0 },
+              visible: { opacity: 1 }
+            }}
+            className="bg-slate-50 dark:bg-[#32324A]/50 p-6 text-center border-t border-slate-100 dark:border-[#3F3F5A]/20"
+          >
             <p className="text-sm text-slate-500 dark:text-[#B4B4C8]">
               {isForgotPassword ? (
                 <>
@@ -452,11 +611,11 @@ export default function Login() {
                 </>
               )}
             </p>
-          </div>
-        </motion.div>
           </motion.div>
-        )}
-      </AnimatePresence>
+        </motion.div>
+      </motion.div>
+    )}
+  </AnimatePresence>
     </div>
   );
 }

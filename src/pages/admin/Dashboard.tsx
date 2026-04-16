@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { CheckCircle, XCircle, Clock, Building, Users, AlertTriangle, Download } from 'lucide-react';
+import { CheckCircle, XCircle, Clock, Building, Users, AlertTriangle, Download, ArrowUpDown, Filter, Loader2 } from 'lucide-react';
 import { collection, query, where, onSnapshot, doc, updateDoc, writeBatch, serverTimestamp, runTransaction } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../lib/firebase';
 import { useNavigate } from 'react-router-dom';
+import { motion, AnimatePresence } from 'motion/react';
 
 export default function AdminDashboard() {
   const { profile } = useAuth();
@@ -13,6 +14,10 @@ export default function AdminDashboard() {
   const [totalUsers, setTotalUsers] = useState<number | '-'>('-');
   const [totalIssues, setTotalIssues] = useState<number | '-'>('-');
   const [activeTab, setActiveTab] = useState<'active' | 'history'>('active');
+  const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
+  const [rejectingBooking, setRejectingBooking] = useState<any | null>(null);
+  const [rejectionReason, setRejectionReason] = useState('');
+  const [isRejecting, setIsRejecting] = useState(false);
 
   useEffect(() => {
     // Listen to all bookings
@@ -115,27 +120,31 @@ export default function AdminDashboard() {
     }
   };
 
-  const handleReject = async (booking: any) => {
-    const reason = window.prompt('Alasan penolakan (opsional):', 'Jadwal tidak sesuai');
-    if (reason === null) return; // Cancelled prompt
-
+  const handleReject = async () => {
+    if (!rejectingBooking || !rejectionReason.trim()) return;
+    
+    setIsRejecting(true);
     try {
       const batch = writeBatch(db);
-      batch.update(doc(db, 'bookings', booking.id), { 
+      batch.update(doc(db, 'bookings', rejectingBooking.id), { 
         status: 'rejected',
-        rejectionReason: reason
+        rejectionReason: rejectionReason
       });
       batch.set(doc(collection(db, 'notifications')), {
-        userId: booking.userId,
+        userId: rejectingBooking.userId,
         title: 'Booking Ditolak',
-        message: `Ruangan ${booking.roomName || booking.roomId} ditolak oleh admin. Alasan: ${reason}`,
+        message: `Ruangan ${rejectingBooking.roomName || rejectingBooking.roomId} ditolak oleh admin. Alasan: ${rejectionReason}`,
         type: 'rejected',
         isRead: false,
         createdAt: serverTimestamp()
       });
       await batch.commit();
+      setRejectingBooking(null);
+      setRejectionReason('');
     } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, `bookings/${booking.id}`);
+      handleFirestoreError(error, OperationType.UPDATE, `bookings/${rejectingBooking.id}`);
+    } finally {
+      setIsRejecting(false);
     }
   };
 
@@ -199,7 +208,13 @@ export default function AdminDashboard() {
   const pendingCount = processedBookings.filter(b => b.displayStatus === 'pending').length;
   const activeBookings = processedBookings.filter(b => ['pending', 'approved'].includes(b.displayStatus));
   const historyBookings = processedBookings.filter(b => ['rejected', 'cancelled', 'completed'].includes(b.displayStatus));
-  const displayedBookings = activeTab === 'active' ? activeBookings : historyBookings;
+  
+  const displayedBookings = (activeTab === 'active' ? activeBookings : historyBookings)
+    .sort((a, b) => {
+      const timeA = new Date(a.createdAt?.toMillis() || a.createdAt || 0).getTime();
+      const timeB = new Date(b.createdAt?.toMillis() || b.createdAt || 0).getTime();
+      return sortOrder === 'desc' ? timeB - timeA : timeA - timeB;
+    });
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -287,6 +302,17 @@ export default function AdminDashboard() {
             <p className="text-sm text-slate-600 dark:text-[#B4B4C8]">Kelola semua pengajuan booking ruangan.</p>
           </div>
           <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 bg-slate-100 dark:bg-[#32324A] border border-slate-200 dark:border-[#3F3F5A]/50 rounded-xl px-3 py-2">
+              <ArrowUpDown className="w-4 h-4 text-slate-500 dark:text-[#B4B4C8]" />
+              <select
+                value={sortOrder}
+                onChange={(e) => setSortOrder(e.target.value as 'desc' | 'asc')}
+                className="bg-transparent text-xs font-medium text-slate-700 dark:text-[#F5F5F5] focus:outline-none"
+              >
+                <option value="desc">Terbaru</option>
+                <option value="asc">Terlama</option>
+              </select>
+            </div>
             <button
               onClick={handleDownloadCSV}
               className="px-4 py-2 bg-slate-100 dark:bg-[#32324A] text-slate-700 dark:text-[#F5F5F5] hover:bg-slate-200 dark:hover:bg-[#3F3F5A] rounded-xl font-medium transition-all flex items-center gap-2 text-sm border border-slate-200 dark:border-[#3F3F5A]/50"
@@ -377,7 +403,10 @@ export default function AdminDashboard() {
                             <CheckCircle className="w-4 h-4" />
                           </button>
                           <button 
-                            onClick={() => handleReject(booking)}
+                            onClick={() => {
+                              setRejectingBooking(booking);
+                              setRejectionReason('');
+                            }}
                             className="p-1.5 rounded-lg bg-red-100 text-red-600 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/50 transition-colors"
                             title="Tolak"
                           >
@@ -395,6 +424,65 @@ export default function AdminDashboard() {
           )}
         </div>
       </div>
+
+      {/* Rejection Modal */}
+      <AnimatePresence>
+        {rejectingBooking && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="bg-white dark:bg-[#27273A] w-full max-w-md rounded-2xl shadow-2xl border border-slate-200 dark:border-[#3F3F5A]/50 overflow-hidden p-6"
+            >
+              <div className="flex items-center gap-3 mb-6">
+                <div className="w-10 h-10 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
+                  <XCircle className="w-6 h-6 text-red-600 dark:text-red-400" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-slate-900 dark:text-[#F5F5F5]">Tolak Pesanan</h3>
+                  <p className="text-xs text-slate-500 dark:text-[#B4B4C8]">Berikan alasan penolakan untuk pemesan.</p>
+                </div>
+              </div>
+
+              <div className="space-y-4 mb-6">
+                <div className="p-3 bg-slate-50 dark:bg-[#32324A] rounded-xl border border-slate-100 dark:border-[#3F3F5A]/30">
+                  <p className="text-xs font-bold text-slate-400 uppercase mb-1">Pesanan</p>
+                  <p className="text-sm font-medium text-slate-700 dark:text-[#F5F5F5]">{rejectingBooking.userName} - {rejectingBooking.roomName || rejectingBooking.roomId}</p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-400 uppercase mb-2">Alasan Penolakan</label>
+                  <textarea
+                    autoFocus
+                    value={rejectionReason}
+                    onChange={(e) => setRejectionReason(e.target.value)}
+                    placeholder="Contoh: Bentrok jadwal / Ruangan tidak tersedia..."
+                    className="w-full p-3 bg-slate-50 dark:bg-[#2D2D44] border border-slate-200 dark:border-[#3F3F5A]/30 rounded-xl focus:outline-none focus:border-brand-400 dark:focus:border-brand-dark-accent text-sm min-h-[100px] resize-none"
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-3">
+                <button 
+                  onClick={() => setRejectingBooking(null)}
+                  disabled={isRejecting}
+                  className="flex-1 py-2.5 bg-transparent border border-slate-200 dark:border-[#3F3F5A]/30 text-slate-600 dark:text-[#B4B4C8] font-bold rounded-xl hover:bg-slate-50 dark:hover:bg-[#32324A] transition-all disabled:opacity-50"
+                >
+                  Batal
+                </button>
+                <button 
+                  onClick={handleReject}
+                  disabled={isRejecting || !rejectionReason.trim()}
+                  className="flex-1 py-2.5 bg-red-500 text-white font-bold rounded-xl hover:bg-red-600 shadow-lg shadow-red-500/20 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  {isRejecting ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Tolak Pesanan'}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

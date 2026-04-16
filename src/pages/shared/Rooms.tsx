@@ -20,8 +20,9 @@ export default function Rooms() {
   const [selectedRoom, setSelectedRoom] = useState<any | null>(null);
   const [infoRoom, setInfoRoom] = useState<any | null>(null);
   const [bookingReason, setBookingReason] = useState('');
-  const [startTime, setStartTime] = useState('');
-  const [endTime, setEndTime] = useState('');
+  const [selectedDate, setSelectedDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [selectedSks, setSelectedSks] = useState<2 | 3>(2);
+  const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
   const [isBooking, setIsBooking] = useState(false);
   const [sortBy, setSortBy] = useState('name');
   const [showSuccessModal, setShowSuccessModal] = useState(false);
@@ -65,22 +66,52 @@ export default function Rooms() {
     }
   }, [infoRoom?.id, selectedRoom?.id]);
 
+  // SKS Time Slots Configuration
+  const SKS_START_TIMES = [
+    "06:30", "07:20", "08:10", "09:00", "09:50", "10:40", "11:30",
+    "12:30", "13:20", "14:10", "15:00", "15:50", "16:40",
+    "18:30", "19:20", "20:10"
+  ];
+
+  const getSlotEndTime = (startTime: string, sks: number) => {
+    const [hours, minutes] = startTime.split(':').map(Number);
+    const date = new Date();
+    date.setHours(hours, minutes, 0, 0);
+    // 1 SKS = 50 minutes
+    date.setMinutes(date.getMinutes() + (sks * 50));
+    return format(date, 'HH:mm');
+  };
+
+  const generateSlots = () => {
+    return SKS_START_TIMES.map(start => ({
+      start,
+      end: getSlotEndTime(start, selectedSks)
+    }));
+  };
+
+  const checkSlotConflict = (slotStart: string, slotEnd: string) => {
+    if (!selectedDate) return false;
+    
+    const newStart = new Date(`${selectedDate}T${slotStart}`).getTime();
+    const newEnd = new Date(`${selectedDate}T${slotEnd}`).getTime();
+
+    return roomActiveBookings.some(b => {
+      const bStart = new Date(b.start_at || b.startTime).getTime();
+      const bEnd = new Date(b.end_at || b.endTime).getTime();
+      return bStart < newEnd && bEnd > newStart;
+    });
+  };
+
   // Auto-check availability when time changes
   React.useEffect(() => {
-    if (startTime && endTime) {
-      const newStart = new Date(startTime).getTime();
-      const newEnd = new Date(endTime).getTime();
-      
-      if (newStart < newEnd) {
-        setIsCheckingAvailability(true);
-        // Simulate a tiny delay for UX feedback so user knows it's checking
-        const timer = setTimeout(() => {
-          setIsCheckingAvailability(false);
-        }, 400);
-        return () => clearTimeout(timer);
-      }
+    if (selectedDate && selectedSlot) {
+      setIsCheckingAvailability(true);
+      const timer = setTimeout(() => {
+        setIsCheckingAvailability(false);
+      }, 400);
+      return () => clearTimeout(timer);
     }
-  }, [startTime, endTime]);
+  }, [selectedDate, selectedSlot, selectedSks]);
 
   // Scroll Lock for Modals
   React.useEffect(() => {
@@ -111,10 +142,21 @@ export default function Rooms() {
 
   const handleBooking = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedRoom || !profile || !startTime || !endTime || !bookingReason) return;
+    if (!selectedRoom || !profile || !selectedDate || !selectedSlot || !bookingReason) return;
+
+    if (!profile.profileCompleted && profile.role !== 'admin') {
+      toast.error('Lengkapi profil Anda terlebih dahulu sebelum melakukan pemesanan.');
+      return;
+    }
 
     setIsBooking(true);
     try {
+      const slot = generateSlots().find(s => s.start === selectedSlot);
+      if (!slot) throw new Error('Slot tidak valid.');
+
+      const startTime = `${selectedDate}T${slot.start}:00`;
+      const endTime = `${selectedDate}T${slot.end}:00`;
+
       const newStart = new Date(startTime).getTime();
       const newEnd = new Date(endTime).getTime();
 
@@ -203,8 +245,7 @@ export default function Rooms() {
 
       setSelectedRoom(null);
       setBookingReason('');
-      setStartTime('');
-      setEndTime('');
+      setSelectedSlot(null);
       setShowSuccessModal(true);
       setTimeout(() => setShowSuccessModal(false), 3000);
     } catch (error: any) {
@@ -545,6 +586,14 @@ export default function Rooms() {
               
               <form onSubmit={handleBooking} className="flex flex-col overflow-hidden flex-1">
                 <div className="p-6 space-y-4 overflow-y-auto flex-1">
+                  {!profile?.profileCompleted && profile?.role !== 'admin' && (
+                    <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl flex items-start gap-3">
+                      <AlertTriangle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
+                      <p className="text-xs text-red-600 dark:text-red-400 font-medium">
+                        Profil Anda belum lengkap. Silakan lengkapi data diri di halaman Profil agar dapat mengajukan pemesanan.
+                      </p>
+                    </div>
+                  )}
                   {selectedRoom.rules && (
                     <div className="p-4 bg-brand-100 dark:bg-[#32324A]/50 border border-brand-300 dark:border-brand-dark-accent/30 rounded-xl flex gap-3 items-start">
                       <Info className="w-5 h-5 text-brand-700 dark:text-brand-dark-accent shrink-0 mt-0.5" />
@@ -555,106 +604,91 @@ export default function Rooms() {
                     </div>
                   )}
 
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-4">
                     <div className="space-y-1.5">
-                      <label className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-[#B4B4C8]">Waktu Mulai</label>
+                      <label className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-[#B4B4C8]">Pilih Tanggal</label>
                       <input 
-                        type="datetime-local" 
+                        type="date" 
                         required
-                        value={startTime}
-                        onChange={(e) => setStartTime(e.target.value)}
+                        min={format(new Date(), 'yyyy-MM-dd')}
+                        value={selectedDate}
+                        onChange={(e) => setSelectedDate(e.target.value)}
                         className="w-full px-3 py-2 bg-brand-100 dark:bg-[#32324A] border border-slate-200 dark:border-[#3F3F5A]/50 rounded-lg text-slate-900 dark:text-[#F5F5F5] focus:outline-none focus:border-brand-400 dark:border-brand-dark-accent"
                       />
                     </div>
+
                     <div className="space-y-1.5">
-                      <label className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-[#B4B4C8]">Waktu Selesai</label>
-                      <input 
-                        type="datetime-local" 
-                        required
-                        value={endTime}
-                        onChange={(e) => setEndTime(e.target.value)}
-                        className="w-full px-3 py-2 bg-brand-100 dark:bg-[#32324A] border border-slate-200 dark:border-[#3F3F5A]/50 rounded-lg text-slate-900 dark:text-[#F5F5F5] focus:outline-none focus:border-brand-400 dark:border-brand-dark-accent"
-                      />
+                      <label className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-[#B4B4C8]">Jumlah SKS</label>
+                      <div className="flex gap-2">
+                        {[2, 3].map((sks) => (
+                          <button
+                            key={sks}
+                            type="button"
+                            onClick={() => {
+                              setSelectedSks(sks as 2 | 3);
+                              setSelectedSlot(null);
+                            }}
+                            className={cn(
+                              "flex-1 py-2 rounded-lg font-bold border transition-all",
+                              selectedSks === sks
+                                ? "bg-brand-dark-accent-light text-brand-dark-on-accent border-brand-400"
+                                : "bg-brand-100 dark:bg-[#32324A] text-slate-600 dark:text-[#B4B4C8] border-slate-200 dark:border-[#3F3F5A]/50"
+                            )}
+                          >
+                            {sks} SKS
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-[#B4B4C8]">Pilih Slot Waktu</label>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-48 overflow-y-auto p-1 custom-scrollbar">
+                        {generateSlots().map((slot) => {
+                          const isConflict = checkSlotConflict(slot.start, slot.end);
+                          return (
+                            <button
+                              key={slot.start}
+                              type="button"
+                              disabled={isConflict}
+                              onClick={() => setSelectedSlot(slot.start)}
+                              className={cn(
+                                "py-2 px-1 rounded-lg text-[11px] font-medium border transition-all flex flex-col items-center justify-center",
+                                isConflict
+                                  ? "bg-slate-100 dark:bg-[#2A2A3C] text-slate-400 border-slate-200 dark:border-[#3F3F5A]/30 cursor-not-allowed opacity-50"
+                                  : selectedSlot === slot.start
+                                    ? "bg-brand-dark-accent-light text-brand-dark-on-accent border-brand-400 shadow-lg shadow-brand-dark-accent-light/20"
+                                    : "bg-white dark:bg-[#32324A] text-slate-700 dark:text-[#F5F5F5] border-slate-200 dark:border-[#3F3F5A]/50 hover:border-brand-400"
+                              )}
+                            >
+                              <span className="font-bold">{slot.start}</span>
+                              <span className="opacity-60 text-[9px]">{slot.end}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
                   </div>
 
-                  {startTime && endTime && (
+                  {selectedDate && selectedSlot && (
                     <div className="p-3 bg-slate-50 dark:bg-[#32324A]/30 border border-slate-200 dark:border-[#3F3F5A]/30 rounded-xl">
-                      {(() => {
-                        const newStart = new Date(startTime).getTime();
-                        const newEnd = new Date(endTime).getTime();
-                        const isTimeValid = newStart < newEnd;
-                        
-                        return (
-                          <>
-                            <div className="flex items-center justify-between mb-2">
-                              <div className="flex items-center gap-2">
-                                <p className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-[#B4B4C8]">Status Ketersediaan:</p>
-                                {isCheckingAvailability && <Loader2 className="w-3 h-3 animate-spin text-brand-600" />}
-                              </div>
-                              <button 
-                                type="button"
-                                disabled={!isTimeValid || isCheckingAvailability}
-                                onClick={() => {
-                                  const conflict = roomActiveBookings.find(b => {
-                                    const bStart = new Date(b.start_at || b.startTime).getTime();
-                                    const bEnd = new Date(b.end_at || b.endTime).getTime();
-                                    return bStart < newEnd && bEnd > newStart;
-                                  });
-
-                                  if (conflict) {
-                                    toast.error('Tidak tersedia pada jam tersebut.');
-                                  } else {
-                                    toast.success('Tersedia! Silakan ajukan pesanan.');
-                                  }
-                                }}
-                                className={cn(
-                                  "text-[10px] px-2 py-1 rounded-md font-bold transition-all",
-                                  isTimeValid && !isCheckingAvailability
-                                    ? "bg-brand-100 dark:bg-[#32324A] text-brand-700 dark:text-brand-dark-accent hover:bg-brand-200" 
-                                    : "bg-slate-200 dark:bg-[#3F3F5A] text-slate-400 cursor-not-allowed"
-                                )}
-                              >
-                                {isCheckingAvailability ? 'Memeriksa...' : 'Cek Manual'}
-                              </button>
-                            </div>
-                            {!isTimeValid ? (
-                              <div className="flex items-center gap-2 text-amber-500 dark:text-amber-400 text-xs font-medium">
-                                <AlertTriangle className="w-3.5 h-3.5" />
-                                Perbaiki waktu dulu sebelum cek ketersediaan.
-                              </div>
-                            ) : isCheckingAvailability ? (
-                              <div className="flex items-center gap-2 text-slate-400 text-sm font-medium animate-pulse">
-                                <Clock className="w-4 h-4" />
-                                Memeriksa ketersediaan...
-                              </div>
-                            ) : (
-                              (() => {
-                                const conflict = roomActiveBookings.find(b => {
-                                  const bStart = new Date(b.start_at || b.startTime).getTime();
-                                  const bEnd = new Date(b.end_at || b.endTime).getTime();
-                                  return bStart < newEnd && bEnd > newStart;
-                                });
-
-                                if (conflict) {
-                                  return (
-                                    <div className="flex items-center gap-2 text-red-500 dark:text-red-400 text-sm font-medium">
-                                      <AlertTriangle className="w-4 h-4" />
-                                      Tidak tersedia.
-                                    </div>
-                                  );
-                                }
-                                return (
-                                  <div className="flex items-center gap-2 text-green-500 dark:text-green-400 text-sm font-medium">
-                                    <CheckCircle className="w-4 h-4" />
-                                    Tersedia.
-                                  </div>
-                                );
-                              })()
-                            )}
-                          </>
-                        );
-                      })()}
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <p className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-[#B4B4C8]">Status Ketersediaan:</p>
+                          {isCheckingAvailability && <Loader2 className="w-3 h-3 animate-spin text-brand-600" />}
+                        </div>
+                      </div>
+                      {isCheckingAvailability ? (
+                        <div className="flex items-center gap-2 text-slate-400 text-sm font-medium animate-pulse">
+                          <Clock className="w-4 h-4" />
+                          Memeriksa ketersediaan...
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2 text-green-500 dark:text-green-400 text-sm font-medium">
+                          <CheckCircle className="w-4 h-4" />
+                          Slot tersedia untuk dipesan.
+                        </div>
+                      )}
                     </div>
                   )}
 
@@ -681,7 +715,7 @@ export default function Rooms() {
                   </button>
                   <button 
                     type="submit"
-                    disabled={isBooking}
+                    disabled={isBooking || (!profile?.profileCompleted && profile?.role !== 'admin')}
                     className="flex-1 py-2.5 bg-brand-dark-accent-light text-brand-dark-on-accent font-bold rounded-xl hover:bg-brand-dark-accent-hover hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 disabled:hover:scale-100 flex items-center justify-center gap-2"
                   >
                     {isBooking ? <><Loader2 className="w-5 h-5 animate-spin" /> Memproses...</> : 'Ajukan Pesanan'}

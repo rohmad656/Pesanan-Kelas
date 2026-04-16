@@ -180,7 +180,7 @@ export default function DashboardLayout() {
     if (!notif.isRead) {
       await updateDoc(doc(db, 'notifications', notif.id), { isRead: true });
     }
-    navigate('/pesanan');
+    navigate('/pesan');
   };
 
   const handleLogout = async () => {
@@ -295,14 +295,25 @@ export default function DashboardLayout() {
         <div className="p-4 border-t border-slate-200 dark:border-[#3F3F5A]/30">
           <Link 
             to="/profil"
-            className="flex items-center gap-3 px-4 py-3 mb-2 border-l-4 border-transparent rounded-xl hover:rounded-r-xl hover:rounded-l-sm hover:border-slate-300 dark:hover:border-[#4A4A6A] hover:bg-slate-100 dark:hover:bg-[#2A2A3D] transition-all cursor-pointer group"
+            className="flex items-center gap-3 px-4 py-3 mb-2 border-l-4 border-transparent rounded-xl hover:rounded-r-xl hover:rounded-l-sm hover:border-slate-300 dark:hover:border-[#4A4A6A] hover:bg-slate-100 dark:hover:bg-[#2A2A3D] transition-all cursor-pointer group relative"
           >
-            <div className="w-8 h-8 rounded-full bg-brand-200 dark:bg-brand-dark-accent-light text-brand-900 dark:text-white flex items-center justify-center font-bold shrink-0 group-hover:scale-105 transition-transform">
-              {profile?.name.charAt(0).toUpperCase()}
+            <div className="w-8 h-8 rounded-full bg-brand-200 dark:bg-brand-dark-accent-light text-brand-900 dark:text-white flex items-center justify-center font-bold shrink-0 group-hover:scale-105 transition-transform overflow-hidden">
+              {profile?.photoURL ? (
+                <img 
+                  src={profile.photoURL} 
+                  alt={profile.name} 
+                  className="w-full h-full object-cover"
+                  referrerPolicy="no-referrer"
+                />
+              ) : (
+                profile?.name.charAt(0).toUpperCase()
+              )}
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium truncate text-slate-900 dark:text-[#F5F5F5] group-hover:text-brand-700 dark:group-hover:text-brand-dark-accent transition-colors">{profile?.name}</p>
-              <p className="text-xs text-slate-500 dark:text-[#B4B4C8] truncate">Kelola Profil</p>
+              <p className="text-xs text-slate-500 dark:text-[#B4B4C8] truncate">
+                {profile?.profileCompleted ? 'Kelola Profil' : 'Lengkapi Profil ⚠️'}
+              </p>
             </div>
           </Link>
           <button
@@ -436,7 +447,7 @@ export default function DashboardLayout() {
 
                 </div>
                 <div className="p-2 border-t border-slate-200 dark:border-[#3F3F5A]/30 text-center">
-                  <Link to="/pesanan" className="text-xs text-brand-600 dark:text-brand-dark-accent font-bold hover:underline">Lihat Semua Pesanan</Link>
+                  <Link to="/pesan" className="text-xs text-brand-600 dark:text-brand-dark-accent font-bold hover:underline">Baca Semua Pesan</Link>
                 </div>
               </div>
             </button>

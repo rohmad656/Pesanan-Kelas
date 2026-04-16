@@ -4,7 +4,7 @@
  */
 
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ThemeProvider } from './contexts/ThemeContext';
@@ -19,13 +19,17 @@ import Rooms from './pages/shared/Rooms';
 import Bookings from './pages/shared/Bookings';
 import Reports from './pages/shared/Reports';
 import Profile from './pages/shared/Profile';
+import Notifications from './pages/shared/Notifications';
 import Help from './pages/shared/Help';
 import ManageRooms from './pages/admin/ManageRooms';
 import ManageUsers from './pages/admin/ManageUsers';
 import AuditReports from './pages/admin/AuditReports';
+import ResetPassword from './pages/ResetPassword';
+import Register from './pages/Register';
 
 const ProtectedRoute = ({ children, allowedRoles }: { children: React.ReactNode, allowedRoles?: string[] }) => {
   const { user, profile, loading } = useAuth();
+  const location = useLocation();
 
   if (loading) {
     return <div className="min-h-screen flex items-center justify-center bg-[#190622] text-white">Loading...</div>;
@@ -33,6 +37,11 @@ const ProtectedRoute = ({ children, allowedRoles }: { children: React.ReactNode,
 
   if (!user || !profile) {
     return <Navigate to="/login" />;
+  }
+
+  // Redirect to profile if not completed, unless already on profile page or is admin
+  if (!profile.profileCompleted && location.pathname !== '/profil' && profile.role !== 'admin') {
+    return <Navigate to="/profil" />;
   }
 
   if (allowedRoles && !allowedRoles.includes(profile.role)) {
@@ -84,6 +93,8 @@ export default function App() {
             <Routes>
               <Route path="/" element={<Landing />} />
               <Route path="/login" element={<Login />} />
+              <Route path="/reset-password" element={<ResetPassword />} />
+              <Route path="/daftar" element={<Register />} />
               
               <Route element={
                 <ProtectedRoute>
@@ -93,6 +104,7 @@ export default function App() {
                 <Route path="/dashboard" element={<DashboardRouter />} />
                 <Route path="/ruangan" element={<Rooms />} />
                 <Route path="/pesanan" element={<Bookings />} />
+                <Route path="/pesan" element={<Notifications />} />
                 <Route path="/laporan" element={<Reports />} />
                 <Route path="/profil" element={<Profile />} />
                 <Route path="/bantuan" element={<Help />} />
