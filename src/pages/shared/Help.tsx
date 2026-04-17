@@ -1,9 +1,15 @@
-import React from 'react';
-import { HelpCircle, BookOpen, MessageCircle, Phone, Mail, User, AlertTriangle } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { HelpCircle, BookOpen, MessageCircle, Phone, Mail, User, AlertTriangle, Loader2 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import { collection, query, where, getDocs } from 'firebase/firestore';
+import { db, handleFirestoreError, OperationType } from '../../lib/firebase';
+import ReportIssueModal from '../../components/ReportIssueModal';
 
 export default function Help() {
   const { profile } = useAuth();
+  const [staffDirectory, setStaffDirectory] = useState<any[]>([]);
+  const [loadingStaff, setLoadingStaff] = useState(true);
+  const [isReportModalOpen, setIsReportModalOpen] = useState(false);
   
   const faqs = [
     {
@@ -24,10 +30,29 @@ export default function Help() {
     }
   ];
 
-  const staffDirectory = [
-    { name: 'Budi Santoso', role: 'Staff Sarpras Fakultas Teknik', wa: '6281234567890', email: 'budi@campusbook.ac.id', img: 'https://ui-avatars.com/api/?name=Budi+Santoso&background=d1a6ff&color=3a0a67' },
-    { name: 'Siti Aminah', role: 'Admin Pusat Layanan Terpadu', wa: '6289876543210', email: 'siti@campusbook.ac.id', img: 'https://ui-avatars.com/api/?name=Siti+Aminah&background=ffafd5&color=3a0a67' }
-  ];
+  useEffect(() => {
+    async function fetchStaff() {
+      try {
+        const q = query(
+          collection(db, 'users'), 
+          where('role', 'in', ['staff', 'admin']),
+          where('deleted', '!=', true)
+        );
+        const snapshot = await getDocs(q);
+        const staffData = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }));
+        setStaffDirectory(staffData);
+      } catch (error) {
+        handleFirestoreError(error, OperationType.GET, 'users');
+      } finally {
+        setLoadingStaff(false);
+      }
+    }
+
+    fetchStaff();
+  }, []);
 
   return (
     <div className="animate-fade-in max-w-4xl mx-auto space-y-8">
@@ -62,32 +87,46 @@ export default function Help() {
           </h2>
           
           <div className="space-y-4">
-            {/* Staff Directory (Only visible to logged-in non-admins for safety, or everyone in dashboard) */}
-            {profile && (
-              <div className="bg-white dark:bg-[#27273A] dark:shadow-lg dark:shadow-black/20 border border-slate-200 dark:border-[#3F3F5A]/30 rounded-2xl p-5 space-y-4">
-                <h3 className="font-semibold text-slate-900 dark:text-[#F5F5F5] text-sm border-b border-slate-200 dark:border-[#3F3F5A]/30 pb-2">Kontak Staff (WhatsApp)</h3>
-                <div className="space-y-4">
-                  {staffDirectory.map((staff, idx) => (
-                    <div key={idx} className="flex items-center gap-3">
-                      <img src={staff.img} alt={staff.name} className="w-10 h-10 rounded-full border border-brand-300 dark:border-brand-dark-accent/30" />
+            {/* Staff Directory */}
+            <div className="bg-white dark:bg-[#27273A] dark:shadow-lg dark:shadow-black/20 border border-slate-200 dark:border-[#3F3F5A]/30 rounded-2xl p-5 space-y-4">
+              <h3 className="font-semibold text-slate-900 dark:text-[#F5F5F5] text-sm border-b border-slate-200 dark:border-[#3F3F5A]/30 pb-2">Kontak Staff (WhatsApp)</h3>
+              <div className="space-y-4">
+                {loadingStaff ? (
+                  <div className="flex items-center justify-center py-4">
+                    <Loader2 className="w-6 h-6 animate-spin text-brand-700 dark:text-brand-dark-accent" />
+                  </div>
+                ) : staffDirectory.length === 0 ? (
+                  <p className="text-xs text-slate-500 italic">Belum ada data staff yang tersedia.</p>
+                ) : (
+                  staffDirectory.map((staff) => (
+                    <div key={staff.id} className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-brand-100 dark:bg-[#32324A] flex items-center justify-center font-bold text-xs shrink-0 overflow-hidden border border-brand-300 dark:border-brand-dark-accent/30">
+                        {staff.photoURL ? (
+                          <img src={staff.photoURL} alt={staff.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                        ) : (
+                          (staff.name || '?').charAt(0).toUpperCase()
+                        )}
+                      </div>
                       <div className="flex-1 min-w-0">
                         <h4 className="font-semibold text-slate-900 dark:text-[#F5F5F5] text-sm truncate">{staff.name}</h4>
-                        <p className="text-slate-600 dark:text-[#B4B4C8] text-xs truncate">{staff.role}</p>
+                        <p className="text-slate-600 dark:text-[#B4B4C8] text-xs truncate capitalize">{staff.division || staff.role}</p>
                       </div>
-                      <a 
-                        href={`https://wa.me/${staff.wa}`} 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        className="p-2 bg-[#25D366]/10 text-[#25D366] rounded-lg hover:bg-[#25D366]/20 transition-colors shrink-0"
-                        title="Hubungi via WhatsApp"
-                      >
-                        <MessageCircle className="w-4 h-4" />
-                      </a>
+                      {staff.whatsapp && (
+                        <a 
+                          href={`https://wa.me/${staff.whatsapp.replace(/\+/g, '')}`} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="p-2 bg-[#25D366]/10 text-[#25D366] rounded-lg hover:bg-[#25D366]/20 transition-colors shrink-0"
+                          title="Hubungi via WhatsApp"
+                        >
+                          <MessageCircle className="w-4 h-4" />
+                        </a>
+                      )}
                     </div>
-                  ))}
-                </div>
+                  ))
+                )}
               </div>
-            )}
+            </div>
 
             {/* Report Issue Section */}
             <div className="bg-brand-100 dark:bg-[#32324A]/30 border border-red-500/30 rounded-2xl p-5">
@@ -97,7 +136,10 @@ export default function Help() {
               <p className="text-slate-600 dark:text-[#B4B4C8] text-xs leading-relaxed mb-4">
                 Jika Anda menemukan kerusakan fasilitas (AC mati, proyektor rusak, dll) saat menggunakan ruangan, segera laporkan ke staff terkait.
               </p>
-              <button className="w-full py-2 bg-red-500/10 text-red-400 border border-red-500/30 rounded-xl text-sm font-bold hover:bg-red-500/20 transition-colors">
+              <button 
+                onClick={() => setIsReportModalOpen(true)}
+                className="w-full py-2 bg-red-500/10 text-red-400 border border-red-500/30 rounded-xl text-sm font-bold hover:bg-red-500/20 transition-colors cursor-pointer"
+              >
                 Buat Laporan Kerusakan
               </button>
             </div>
@@ -117,6 +159,11 @@ export default function Help() {
           </div>
         </div>
       </div>
+
+      <ReportIssueModal 
+        isOpen={isReportModalOpen} 
+        onClose={() => setIsReportModalOpen(false)} 
+      />
     </div>
   );
 }

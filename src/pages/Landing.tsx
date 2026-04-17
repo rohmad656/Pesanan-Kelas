@@ -268,7 +268,7 @@ export default function Landing() {
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true, margin: "-50px" }}
         transition={{ duration: 0.6, ease: "easeOut" }}
-        className="pt-16 pb-8 border-t border-[#3F3F5A]/30 relative z-20 bg-[#1E1E2F]"
+        className="mt-auto pt-16 pb-8 border-t border-[#3F3F5A]/30 relative z-20 bg-[#1E1E2F]"
       >
         <div className="max-w-6xl mx-auto px-8 grid grid-cols-1 md:grid-cols-4 gap-12 mb-16">
           <div className="col-span-1 md:col-span-2">

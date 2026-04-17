@@ -453,8 +453,13 @@ export default function DashboardLayout() {
             </button>
           </div>
         </header>
-        <div className="flex-1 overflow-auto p-4 md:p-8 relative">
-          <Outlet />
+        <div className="flex-1 overflow-auto flex flex-col focus:outline-none relative">
+          <div className="p-4 md:p-8 flex-1">
+            <Outlet />
+          </div>
+          <footer className="px-4 md:px-8 py-4 border-t border-slate-200 dark:border-[#3F3F5A]/30 text-[10px] text-slate-400 dark:text-[#B4B4C8]/30 text-center mt-auto">
+            © 2026 CampusBook • Modern Academic Experience • Made with ❤️ for Campus Innovation
+          </footer>
         </div>
       </main>
     </div>

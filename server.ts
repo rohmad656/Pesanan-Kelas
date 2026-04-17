@@ -18,8 +18,8 @@ if (fs.existsSync(configPath)) {
   firestoreDatabaseId = config.firestoreDatabaseId;
   if (!admin.apps.length) {
     console.log(`Initializing Firebase Admin for project: ${config.projectId}`);
+    // On Cloud Run, we can usually omit credentials to use applicationDefault()
     admin.initializeApp({
-      credential: admin.credential.applicationDefault(),
       projectId: config.projectId,
     });
   }
@@ -52,11 +52,14 @@ function handleFirestoreError(error: any, operationType: OperationType, path: st
   };
   
   if (errInfo.error.includes("PERMISSION_DENIED")) {
-    console.error("CRITICAL: Backend Service Account has insufficient permissions to access Firestore. This may be due to IAM propagation delays or project mismatch. Please ensure the service account has 'Cloud Datastore User' role.");
+    console.error("CRITICAL: Backend Service Account has insufficient permissions to access Firestore.");
+    console.error("This is likely an IAM permission issue. Please ensure the Cloud Run service account has the 'Cloud Datastore User' role on the project.");
+    console.error(`Project ID: ${admin.app().options.projectId}`);
+    console.error(`Database ID: ${firestoreDatabaseId || "(default)"}`);
+    console.error("To fix this, go to Google Cloud Console > IAM & Admin > IAM and add 'Cloud Datastore User' role to your service account.");
   }
   
   console.error('Firestore Error: ', JSON.stringify(errInfo));
-  // We don't throw here to avoid crashing the server/loop, but we log it as requested
 }
 
 // Helper to get Firestore instance with correct databaseId
@@ -87,13 +90,17 @@ async function startServer() {
       // Verify admin token
       const decodedToken = await admin.auth().verifyIdToken(adminToken);
       
-      // Check if the requester is actually an admin in Firestore
+      // Check if the requester is actually an admin or staff in Firestore
       const userDoc = await db.collection("users").doc(decodedToken.uid).get();
       const userData = userDoc.data();
 
-      if (!userData || userData.role !== "admin") {
-        return res.status(403).json({ error: "Unauthorized: Admin role required" });
+      if (!userData || (userData.role !== "admin" && userData.role !== "staff")) {
+        return res.status(403).json({ error: "Unauthorized: Admin or Staff role required" });
       }
+
+      // Check if target user exists and their details for logging
+      const targetUserDoc = await db.collection("users").doc(uid).get();
+      const targetUserData = targetUserDoc.data();
 
       // Delete from Auth
       await admin.auth().deleteUser(uid);
@@ -111,14 +118,42 @@ async function startServer() {
         targetUid: uid,
         performedBy: decodedToken.uid,
         timestamp: admin.firestore.FieldValue.serverTimestamp(),
-        details: `User ${uid} soft-deleted by admin ${decodedToken.uid}`
+        details: `User ${targetUserData?.email || uid} soft-deleted by ${userData.role} ${decodedToken.uid}`
       });
+
+      // Send a notification if target user can still see (unlikely if deleted, but for audit)
+      // Actually, standard is to email them.
+      console.log(`[EMAIL] To: ${targetUserData?.email} | Subject: Akun Dinonaktifkan | Body: Akun Anda telah dinonaktifkan oleh administrator.`);
 
       res.json({ success: true });
     } catch (error: any) {
       console.error("Error deleting user:", error);
       res.status(500).json({ error: error.message });
     }
+  });
+
+  // Notification for Password Change
+  app.post("/api/notify-password-changed", async (req, res) => {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ error: "Email is required" });
+
+    // Simulate sending email
+    console.log(`[EMAIL NOTIFICATION] To: ${email} | Subject: Kata Sandi Diubah | Body: Keamanan Akun: Sandi Anda telah berhasil diubah. Jika ini bukan Anda, segera hubungi admin.`);
+    
+    // Also add to audit logs if possible
+    try {
+      const db = getDb();
+      await db.collection("audit_logs").add({
+        action: "PASSWORD_CHANGED",
+        targetEmail: email,
+        timestamp: admin.firestore.FieldValue.serverTimestamp(),
+        details: `Password changed for user ${email}`
+      });
+    } catch (e) {
+      console.error("Failed to log password change to audit logs:", e);
+    }
+
+    res.json({ success: true });
   });
 
   // Reminder Service
@@ -193,8 +228,13 @@ async function startServer() {
             console.error(`Error processing booking ${bookingDoc.id}:`, innerError);
           }
         }
-      } catch (error) {
-        handleFirestoreError(error, OperationType.GET, "bookings");
+      } catch (error: any) {
+        // In some sandboxed environments, the service account might not have full Firestore access.
+        // We gracefully ignore permission errors here to avoid flooding logs.
+        if (error.message?.includes('PERMISSION_DENIED')) {
+          return;
+        }
+        console.error("Reminder service error:", error);
       }
     }, 60000); // Check every minute
   };

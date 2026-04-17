@@ -23,6 +23,9 @@ export default function Register() {
       navigate('/login');
     } else {
       setName(pendingRegistration.name);
+      if (pendingRegistration.role) {
+        setRole(pendingRegistration.role);
+      }
     }
   }, [pendingRegistration, navigate, setTheme]);
 

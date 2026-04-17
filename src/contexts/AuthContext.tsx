@@ -4,7 +4,7 @@ import { doc, getDoc, setDoc, serverTimestamp, collection, query, where, getDocs
 import { auth, db, googleProvider, handleFirestoreError, OperationType } from '../lib/firebase';
 import toast from 'react-hot-toast';
 
-export type Role = 'mahasiswa' | 'dosen' | 'admin';
+export type Role = 'mahasiswa' | 'dosen' | 'staff' | 'admin';
 
 export interface UserProfile {
   uid: string;
@@ -26,7 +26,7 @@ export interface UserProfile {
 interface AuthContextType {
   user: FirebaseUser | null;
   profile: UserProfile | null;
-  pendingRegistration: { uid: string, email: string, name: string, photoURL: string } | null;
+  pendingRegistration: { uid: string, email: string, name: string, photoURL: string, role?: Role } | null;
   loading: boolean;
   login: (intendedRole?: Role, existingUser?: FirebaseUser) => Promise<{ isNewUser: boolean }>;
   completeRegistration: (data: Partial<UserProfile>) => Promise<void>;
@@ -43,8 +43,16 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<FirebaseUser | null>(null);
-  const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [pendingRegistration, setPendingRegistration] = useState<{ uid: string, email: string, name: string, photoURL: string } | null>(null);
+  const [profile, setProfile] = useState<UserProfile | null>(() => {
+    // Initial profile from local storage for instant UI feedback
+    const saved = localStorage.getItem('user_profile');
+    try {
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+  const [pendingRegistration, setPendingRegistration] = useState<{ uid: string, email: string, name: string, photoURL: string, role?: Role } | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -64,9 +72,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               signOut(auth);
               setProfile(null);
               setUser(null);
+              localStorage.removeItem('user_profile');
               toast.error('Akun Anda telah dihapus oleh administrator.');
             } else {
               setProfile(data as UserProfile);
+              localStorage.setItem('user_profile', JSON.stringify(data));
             }
           } else {
             setProfile(null);
@@ -79,6 +89,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       } else {
         setUser(null);
         setProfile(null);
+        localStorage.removeItem('user_profile');
         if (unsubscribeProfile) {
           unsubscribeProfile();
           unsubscribeProfile = null;
@@ -121,6 +132,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     const result = await signInWithEmailAndPassword(auth, emailToUse, password);
+    toast.success('Login berhasil! Menyiapkan dasbor...');
+
     try {
       const docRef = doc(db, 'users', result.user.uid);
       const docSnap = await getDoc(docRef);
@@ -130,6 +143,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         error.code = 'custom/user-not-found';
         throw error;
       }
+      
+      const userData = docSnap.data() as UserProfile;
+      setProfile(userData);
+      localStorage.setItem('user_profile', JSON.stringify(userData));
+
+      // Update last login and Log login event in parallel
+      await Promise.all([
+        updateDoc(docRef, { 
+          lastLogin: serverTimestamp(),
+          updatedAt: serverTimestamp() 
+        }),
+        setDoc(doc(collection(db, 'audit_logs')), {
+          action: 'LOGIN',
+          performedBy: result.user.uid,
+          timestamp: serverTimestamp(),
+          details: `User ${result.user.email} logged in with role ${userData.role}`
+        }).catch(e => console.warn("Failed to log login event:", e))
+      ]);
     } catch (error: any) {
       if (error.code === 'custom/user-not-found') throw error;
       handleFirestoreError(error, OperationType.GET, `users/${result.user.uid}`);
@@ -265,6 +296,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         currentUser = result.user;
       }
       
+      toast.success('Login berhasil! Menyiapkan dasbor...');
+      
       const docRef = doc(db, 'users', currentUser.uid);
       const docSnap = await getDoc(docRef);
       
@@ -275,9 +308,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           email: currentUser.email || '',
           name: currentUser.displayName || '',
           photoURL: currentUser.photoURL || '',
+          role: intendedRole,
         });
         return { isNewUser: true };
       }
+      
+      // Update last login and Log login event in parallel
+      const userData = docSnap.data() as UserProfile;
+      setProfile(userData);
+      localStorage.setItem('user_profile', JSON.stringify(userData));
+
+      await Promise.all([
+        updateDoc(docRef, { 
+          lastLogin: serverTimestamp(),
+          updatedAt: serverTimestamp() 
+        }),
+        setDoc(doc(collection(db, 'audit_logs')), {
+          action: 'LOGIN',
+          performedBy: currentUser.uid,
+          timestamp: serverTimestamp(),
+          details: `User ${currentUser.email} logged in with role ${userData.role}`
+        }).catch(e => console.warn("Failed to log login event:", e))
+      ]);
       
       setPendingRegistration(null);
       return { isNewUser: false };

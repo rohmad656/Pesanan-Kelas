@@ -62,6 +62,7 @@ const DashboardRouter = () => {
     case 'dosen':
       return <DosenDashboard />;
     case 'admin':
+    case 'staff':
       return <AdminDashboard />;
     default:
       return <Navigate to="/login" />;
@@ -110,17 +111,17 @@ export default function App() {
                 <Route path="/bantuan" element={<Help />} />
                 {/* Admin specific routes */}
                 <Route path="/admin/ruangan" element={
-                  <ProtectedRoute allowedRoles={['admin']}>
+                  <ProtectedRoute allowedRoles={['admin', 'staff']}>
                     <ManageRooms />
                   </ProtectedRoute>
                 } />
                 <Route path="/admin/users" element={
-                  <ProtectedRoute allowedRoles={['admin']}>
+                  <ProtectedRoute allowedRoles={['admin', 'staff']}>
                     <ManageUsers />
                   </ProtectedRoute>
                 } />
                 <Route path="/admin/laporan" element={
-                  <ProtectedRoute allowedRoles={['admin']}>
+                  <ProtectedRoute allowedRoles={['admin', 'staff']}>
                     <AuditReports />
                   </ProtectedRoute>
                 } />

@@ -59,12 +59,14 @@ export default function Login() {
   }, [isVisible]);
 
   const getIdentifierLabel = () => {
+    if (isForgotPassword) return "Email Akun";
     if (role === 'mahasiswa') return 'Email atau NIM';
     if (role === 'dosen') return 'Email atau NIP';
     return 'ID Staf atau Email';
   };
 
   const getIdentifierPlaceholder = () => {
+    if (isForgotPassword) return "Masukkan Email Anda";
     if (role === 'mahasiswa') return 'mhs@kampus.ac.id / 123456';
     if (role === 'dosen') return 'dosen@kampus.ac.id / 987654';
     return 'admin@kampus.ac.id / STF001';

@@ -8,6 +8,7 @@ import { cn } from '../../lib/utils';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'motion/react';
+import ReportIssueModal from '../../components/ReportIssueModal';
 
 export default function Rooms() {
   const { profile } = useAuth();
@@ -19,6 +20,7 @@ export default function Rooms() {
   const [filterFacility, setFilterFacility] = useState('');
   const [selectedRoom, setSelectedRoom] = useState<any | null>(null);
   const [infoRoom, setInfoRoom] = useState<any | null>(null);
+  const [reportRoom, setReportRoom] = useState<any | null>(null);
   const [bookingReason, setBookingReason] = useState('');
   const [selectedDate, setSelectedDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [selectedSks, setSelectedSks] = useState<2 | 3>(2);
@@ -483,6 +485,24 @@ export default function Rooms() {
                   </div>
                 )}
                 
+                <div className="flex gap-2 mb-4">
+                  <span className={`px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase ${
+                    infoRoom.status === 'available' ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'
+                  }`}>
+                    Status: {infoRoom.status === 'available' ? 'Tersedia' : 'Perbaikan'}
+                  </span>
+                  <button 
+                    onClick={() => {
+                      setReportRoom(infoRoom);
+                      setInfoRoom(null);
+                    }}
+                    className="flex items-center gap-1 text-[10px] font-bold text-red-400 hover:text-red-300 transition-colors ml-auto"
+                  >
+                    <AlertTriangle className="w-3 h-3" />
+                    Laporkan Masalah
+                  </button>
+                </div>
+
                 <div className="grid grid-cols-2 gap-4 text-sm text-slate-600 dark:text-[#B4B4C8]">
                   <div>
                     <span className="block text-xs font-bold uppercase tracking-wider mb-1">Gedung / Lantai</span>
@@ -752,6 +772,14 @@ export default function Rooms() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Report Modal */}
+      <ReportIssueModal 
+        isOpen={!!reportRoom}
+        onClose={() => setReportRoom(null)}
+        initialRoomId={reportRoom?.id}
+        initialRoomName={reportRoom?.name}
+      />
     </div>
   );
 }

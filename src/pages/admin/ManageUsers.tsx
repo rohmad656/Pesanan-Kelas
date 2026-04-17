@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, onSnapshot, doc, updateDoc, where } from 'firebase/firestore';
+import { collection, query, onSnapshot, doc, updateDoc, where, serverTimestamp, setDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType, auth } from '../../lib/firebase';
 import { Filter, Trash2, AlertCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const roleOrder: Record<string, number> = {
   admin: 1,
-  dosen: 2,
-  mahasiswa: 3
+  staff: 2,
+  dosen: 3,
+  mahasiswa: 4
 };
 
 export default function ManageUsers() {
@@ -21,18 +22,7 @@ export default function ManageUsers() {
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const usersData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       
-      // Ensure unique users by email to prevent duplication in display
-      const uniqueUsers: any[] = [];
-      const seenEmails = new Set();
-      
-      usersData.forEach((user: any) => {
-        if (!seenEmails.has(user.email)) {
-          seenEmails.add(user.email);
-          uniqueUsers.push(user);
-        }
-      });
-      
-      setUsers(uniqueUsers);
+      setUsers(usersData);
     }, (error) => {
       handleFirestoreError(error, OperationType.GET, 'users');
     });
@@ -40,21 +30,39 @@ export default function ManageUsers() {
     return () => unsubscribe();
   }, []);
 
-  const handleRoleChange = async (id: string, newRole: string) => {
+  const handleRoleChange = async (user: any, newRole: string) => {
     try {
-      await updateDoc(doc(db, 'users', id), { role: newRole });
-      toast.success('Peran pengguna berhasil diperbarui');
+      await updateDoc(doc(db, 'users', user.id), { 
+        role: newRole,
+        updatedAt: serverTimestamp()
+      });
+      
+      // Notify user about role change
+      try {
+        await setDoc(doc(collection(db, 'notifications')), {
+          userId: user.id,
+          title: 'Pembaruan Peran',
+          message: `Peran akun Anda telah diubah menjadi ${newRole.toUpperCase()}.`,
+          type: 'info',
+          isRead: false,
+          createdAt: serverTimestamp()
+        });
+      } catch (e) {
+        console.warn("Failed to send notification:", e);
+      }
+
+      toast.success(`Peran ${user.name} berhasil diubah menjadi ${newRole}`);
     } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, `users/${id}`);
+      handleFirestoreError(error, OperationType.UPDATE, `users/${user.id}`);
     }
   };
 
-  const handleDeleteUser = async (uid: string) => {
-    if (!window.confirm('Apakah Anda yakin ingin menghapus akun ini? Tindakan ini tidak dapat dibatalkan.')) {
+  const handleDeleteUser = async (user: any) => {
+    if (!window.confirm(`Apakah Anda yakin ingin menghapus akun ${user.name}? Tindakan ini akan menonaktifkan akun.`)) {
       return;
     }
 
-    setIsDeleting(uid);
+    setIsDeleting(user.id);
     try {
       const adminToken = await auth.currentUser?.getIdToken();
       if (!adminToken) throw new Error('Sesi tidak valid');
@@ -64,7 +72,7 @@ export default function ManageUsers() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ uid, adminToken }),
+        body: JSON.stringify({ uid: user.id, adminToken }),
       });
 
       const result = await response.json();
@@ -73,12 +81,13 @@ export default function ManageUsers() {
         throw new Error(result.error || 'Gagal menghapus pengguna');
       }
 
-      toast.success('Pengguna berhasil dihapus');
+      // Notify and Audit locally (Server also does this but we reinforce for UI)
+      toast.success('Pengguna berhasil dinonaktifkan (Soft Delete)');
     } catch (error: any) {
       console.error('Error deleting user:', error);
       toast.error(error.message || 'Gagal menghapus pengguna');
     } finally {
-      setIsDeleting(null);
+      setIsDeleting(user.id === isDeleting ? null : isDeleting);
     }
   };
 
@@ -111,6 +120,7 @@ export default function ManageUsers() {
             >
               <option value="semua">Semua Peran</option>
               <option value="admin">Admin</option>
+              <option value="staff">Staff</option>
               <option value="dosen">Dosen</option>
               <option value="mahasiswa">Mahasiswa</option>
             </select>
@@ -128,6 +138,7 @@ export default function ManageUsers() {
                 <th className="px-6 py-4 font-semibold">NIM / NIP</th>
                 <th className="px-6 py-4 font-semibold">WhatsApp</th>
                 <th className="px-6 py-4 font-semibold">Peran (Role)</th>
+                <th className="px-6 py-4 font-semibold">Login Terakhir</th>
                 <th className="px-6 py-4 font-semibold text-center">Aksi</th>
               </tr>
             </thead>
@@ -185,18 +196,27 @@ export default function ManageUsers() {
                   <td className="px-6 py-4">
                     <select 
                       value={user.role}
-                      onChange={(e) => handleRoleChange(user.id, e.target.value)}
+                      onChange={(e) => handleRoleChange(user, e.target.value)}
                       className="px-3 py-1.5 bg-brand-100 dark:bg-[#32324A] border border-slate-200 dark:border-[#3F3F5A]/50 rounded-lg text-slate-900 dark:text-[#F5F5F5] focus:outline-none focus:border-brand-400 dark:border-brand-dark-accent capitalize"
                     >
                       <option value="mahasiswa">Mahasiswa</option>
                       <option value="dosen">Dosen</option>
+                      <option value="staff">Staff</option>
                       <option value="admin">Admin</option>
                     </select>
+                  </td>
+                  <td className="px-6 py-4">
+                    <div className="text-xs text-slate-500 whitespace-nowrap">
+                      {user.lastLogin ? new Date(user.lastLogin.toMillis()).toLocaleString('id-ID', {
+                        dateStyle: 'medium',
+                        timeStyle: 'short'
+                      }) : <span className="italic text-slate-400">Belum pernah login</span>}
+                    </div>
                   </td>
                   <td className="px-6 py-4 text-center">
                     {auth.currentUser?.uid !== user.id && (
                       <button
-                        onClick={() => handleDeleteUser(user.id)}
+                        onClick={() => handleDeleteUser(user)}
                         disabled={isDeleting === user.id}
                         className="p-2 text-red-500 hover:bg-red-500/10 rounded-lg transition-colors disabled:opacity-50"
                         title="Hapus Akun"

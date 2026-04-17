@@ -1,22 +1,35 @@
 import React, { useEffect, useState } from 'react';
-import { collection, query, onSnapshot, doc, updateDoc, writeBatch, serverTimestamp } from 'firebase/firestore';
+import { collection, query, onSnapshot, doc, updateDoc, writeBatch, serverTimestamp, orderBy, limit, where } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../lib/firebase';
-import { AlertTriangle, CheckCircle } from 'lucide-react';
+import { AlertTriangle, CheckCircle, Clock, ShieldCheck, User } from 'lucide-react';
 
 export default function AuditReports() {
   const [issues, setIssues] = useState<any[]>([]);
+  const [loginLogs, setLoginLogs] = useState<any[]>([]);
 
   useEffect(() => {
-    const q = query(collection(db, 'issues'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+    // Listen to issues
+    const qIssues = query(collection(db, 'issues'), orderBy('createdAt', 'desc'));
+    const unsubscribeIssues = onSnapshot(qIssues, (snapshot) => {
       const issuesData = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) }));
-      issuesData.sort((a, b) => b.createdAt?.toMillis() - a.createdAt?.toMillis());
       setIssues(issuesData);
     }, (error) => {
       handleFirestoreError(error, OperationType.GET, 'issues');
     });
 
-    return () => unsubscribe();
+    // Listen to login audit logs
+    const qLoginLogs = query(collection(db, 'audit_logs'), where('action', '==', 'LOGIN'), orderBy('timestamp', 'desc'), limit(50));
+    const unsubscribeLogins = onSnapshot(qLoginLogs, (snapshot) => {
+      const logsData = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) }));
+      setLoginLogs(logsData);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'audit_logs');
+    });
+
+    return () => {
+      unsubscribeIssues();
+      unsubscribeLogins();
+    };
   }, []);
 
   const handleResolve = async (issue: any) => {
@@ -68,10 +81,21 @@ export default function AuditReports() {
                       {issue.status === 'resolved' ? <CheckCircle className="w-6 h-6" /> : <AlertTriangle className="w-6 h-6" />}
                     </div>
                     <div>
-                      <h4 className="font-semibold text-slate-900 dark:text-[#F5F5F5]">Ruangan: {issue.roomId}</h4>
+                      <div className="flex items-center gap-2">
+                        <h4 className="font-semibold text-slate-900 dark:text-[#F5F5F5]">Ruangan: {issue.roomName || issue.roomId}</h4>
+                        {issue.severity && (
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                            issue.severity === 'high' ? 'bg-red-500/10 text-red-500' : 
+                            issue.severity === 'medium' ? 'bg-orange-500/10 text-orange-500' : 
+                            'bg-blue-500/10 text-blue-500'
+                          }`}>
+                            {issue.severity === 'high' ? 'Tinggi' : issue.severity === 'medium' ? 'Sedang' : 'Rendah'}
+                          </span>
+                        )}
+                      </div>
                       <p className="text-sm text-slate-600 dark:text-[#B4B4C8] mt-1">{issue.description}</p>
                       <p className="text-xs text-slate-600 dark:text-[#B4B4C8]/70 mt-2">
-                        Dilaporkan oleh: {issue.userName || issue.userId}
+                        Dilaporkan oleh: {issue.userName || issue.userId} • {issue.createdAt ? new Date(issue.createdAt.toMillis()).toLocaleString('id-ID', { dateStyle: 'short', timeStyle: 'short' }) : '-'}
                       </p>
                     </div>
                   </div>
@@ -88,6 +112,64 @@ export default function AuditReports() {
               ))}
             </div>
           )}
+        </div>
+      </div>
+{/* Login Audit Section */}
+      <div className="bg-white dark:bg-[#27273A] dark:shadow-lg dark:shadow-black/20 rounded-2xl border border-slate-200 dark:border-[#3F3F5A]/30 overflow-hidden">
+        <div className="p-6 border-b border-slate-200 dark:border-[#3F3F5A]/30 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <ShieldCheck className="w-5 h-5 text-brand-700 dark:text-brand-dark-accent" />
+            <h3 className="text-lg font-semibold text-slate-900 dark:text-[#F5F5F5]">Audit Login Terbaru</h3>
+          </div>
+          <span className="text-xs text-slate-500 bg-slate-100 dark:bg-[#32324A] px-2 py-1 rounded-full">
+            50 Log Terakhir
+          </span>
+        </div>
+        
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead className="bg-slate-50 dark:bg-[#32324A] text-slate-900 dark:text-[#F5F5F5]">
+              <tr>
+                <th className="px-6 py-3 font-semibold">Waktu</th>
+                <th className="px-6 py-3 font-semibold">User ID</th>
+                <th className="px-6 py-3 font-semibold text-right">Detail</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 dark:divide-[#3F3F5A]/30">
+              {loginLogs.length === 0 ? (
+                <tr>
+                  <td colSpan={3} className="px-6 py-8 text-center text-slate-500 italic">Belum ada riwayat login.</td>
+                </tr>
+              ) : (
+                loginLogs.map((log) => (
+                  <tr key={log.id} className="hover:bg-slate-50/50 dark:hover:bg-[#32324A]/30">
+                    <td className="px-6 py-3 whitespace-nowrap">
+                      <div className="flex items-center gap-2 text-slate-600 dark:text-[#B4B4C8]">
+                        <Clock className="w-3.5 h-3.5 opacity-60" />
+                        {log.timestamp ? new Date(log.timestamp.toMillis()).toLocaleString('id-ID', {
+                          dateStyle: 'short',
+                          timeStyle: 'short'
+                        }) : '-'}
+                      </div>
+                    </td>
+                    <td className="px-6 py-3">
+                      <div className="flex items-center gap-2">
+                        <User className="w-3.5 h-3.5 opacity-60" />
+                        <span className="font-mono text-[10px] bg-slate-100 dark:bg-[#1E1E2F] px-1.5 py-0.5 rounded text-slate-600 dark:text-[#F5F5F5]">
+                          {log.performedBy}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-3 text-right">
+                      <span className="text-xs text-slate-500 dark:text-[#B4B4C8]/70">
+                        {log.details || 'Login Berhasil'}
+                      </span>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
     </div>
