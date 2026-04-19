@@ -537,32 +537,6 @@ export default function Rooms() {
                     </div>
                   </div>
                 )}
-
-                <div>
-                  <span className="block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-[#B4B4C8] mb-2">Jadwal Terpakai</span>
-                  <div className="p-4 bg-slate-50 dark:bg-[#32324A]/30 border border-slate-200 dark:border-[#3F3F5A]/30 rounded-xl">
-                    {loadingRoomBookings ? (
-                      <div className="flex items-center gap-2 text-slate-500 dark:text-[#B4B4C8] text-sm">
-                        <Loader2 className="w-4 h-4 animate-spin" /> Memuat jadwal...
-                      </div>
-                    ) : roomActiveBookings.length > 0 ? (
-                      <ul className="space-y-2">
-                        {roomActiveBookings.map((b, idx) => {
-                          const start = new Date(b.start_at || b.startTime);
-                          const end = new Date(b.end_at || b.endTime);
-                          return (
-                            <li key={idx} className="text-sm text-slate-700 dark:text-[#F5F5F5] flex items-center gap-2">
-                              <span className="w-2 h-2 rounded-full bg-red-500 shrink-0"></span>
-                              Terpakai: {format(start, 'dd MMM yyyy, HH:mm')} – {format(end, 'HH:mm')}
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    ) : (
-                      <p className="text-sm text-slate-500 dark:text-[#B4B4C8]">Belum ada jadwal terpakai.</p>
-                    )}
-                  </div>
-                </div>
               </div>
 
               <div className="p-6 border-t border-slate-200 dark:border-[#3F3F5A]/30 shrink-0">

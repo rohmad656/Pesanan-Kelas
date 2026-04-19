@@ -119,10 +119,9 @@ export default function ManageUsers() {
               className="bg-transparent text-sm text-slate-900 dark:text-[#F5F5F5] focus:outline-none capitalize"
             >
               <option value="semua">Semua Peran</option>
-              <option value="admin">Admin</option>
-              <option value="staff">Staff</option>
-              <option value="dosen">Dosen</option>
               <option value="mahasiswa">Mahasiswa</option>
+              <option value="dosen">Dosen</option>
+              <option value="admin">Admin</option>
             </select>
           </div>
         </div>

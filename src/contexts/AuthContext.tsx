@@ -1,7 +1,8 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { User as FirebaseUser, onAuthStateChanged, signInWithPopup, signOut, signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail, updateEmail, updateProfile as updateAuthProfile, confirmPasswordReset, verifyPasswordResetCode } from 'firebase/auth';
-import { doc, getDoc, setDoc, serverTimestamp, collection, query, where, getDocs, updateDoc, onSnapshot } from 'firebase/firestore';
+import { User as FirebaseUser, onAuthStateChanged, signInWithPopup, signOut, signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail, updateEmail, updateProfile as updateAuthProfile, confirmPasswordReset, verifyPasswordResetCode, updatePassword } from 'firebase/auth';
+import { doc, getDoc, setDoc, serverTimestamp, collection, query, where, getDocs, updateDoc, onSnapshot, Timestamp, deleteDoc } from 'firebase/firestore';
 import { auth, db, googleProvider, handleFirestoreError, OperationType } from '../lib/firebase';
+import emailjs from '@emailjs/browser';
 import toast from 'react-hot-toast';
 
 export type Role = 'mahasiswa' | 'dosen' | 'staff' | 'admin';
@@ -33,9 +34,12 @@ interface AuthContextType {
   emailLogin: (emailOrId: string, password: string) => Promise<void>;
   emailRegister: (emailOrId: string, password: string, name: string, role: Role) => Promise<void>;
   updateUserProfile: (data: Partial<UserProfile>) => Promise<void>;
-  resetPassword: (email: string) => Promise<void>;
-  confirmNewPassword: (code: string, password: string) => Promise<void>;
-  verifyResetCode: (code: string) => Promise<string>;
+  resetPassword: (email: string) => Promise<{ success: boolean; message: string; code?: string }>;
+  confirmNewPassword: (code: string, password: string) => Promise<{ success: boolean; message: string; code?: string }>;
+  verifyResetCode: (code: string) => Promise<{ success: boolean; email?: string; message?: string; code?: string }>;
+  sendOTPReset: (email: string) => Promise<{ success: boolean; message: string }>;
+  verifyOTPReset: (email: string, otp: string) => Promise<{ success: boolean; message: string }>;
+  completeOTPReset: (email: string, otp: string, password: string) => Promise<{ success: boolean; message: string }>;
   logout: () => Promise<void>;
 }
 
@@ -170,12 +174,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const emailRegister = async (emailOrId: string, password: string, name: string, role: Role) => {
     // Check if NIM already exists
     if (!emailOrId.includes('@')) {
-      const q = query(collection(db, 'users'), where('nim', '==', emailOrId));
+      const q = query(collection(db, 'users'), where('nim', '==', emailOrId), where('deleted', '!=', true));
       const querySnapshot = await getDocs(q);
       if (!querySnapshot.empty) {
-        const error: any = new Error("NIM/NIP ini sudah terdaftar. Silakan masuk menggunakan email yang terkait.");
+        const error: any = new Error(`NIM/NIP ${emailOrId} sudah terdaftar. Silakan masuk menggunakan email terkait.`);
         error.code = 'custom/nim-already-in-use';
         throw error;
+      }
+    } else {
+      // If email provided, check if that email is used as a NIM elsewhere (rare but safe)
+      const q = query(collection(db, 'users'), where('email', '==', emailOrId), where('deleted', '!=', true));
+      const snap = await getDocs(q);
+      if (!snap.empty) {
+        throw new Error('Email ini sudah terdaftar.');
       }
     }
 
@@ -183,6 +194,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const result = await createUserWithEmailAndPassword(auth, email, password);
     const currentUser = result.user;
     
+    // Send verification email for manual registration
+    try {
+      const { sendEmailVerification } = await import('firebase/auth');
+      await sendEmailVerification(currentUser);
+      toast.success('Email verifikasi telah dikirim. Silakan cek kotak masuk Anda.');
+    } catch (e) {
+      console.warn("Failed to send verification email:", e);
+    }
+
     const newProfile: any = {
       uid: currentUser.uid,
       email: currentUser.email || email,
@@ -256,6 +276,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const isCompleted = hasBaseFields;
 
       try {
+        // Log the profile update for audit (Reinforced)
+        await setDoc(doc(collection(db, 'audit_logs')), {
+          action: 'UPDATE_PROFILE',
+          performedBy: auth.currentUser.uid,
+          timestamp: serverTimestamp(),
+          details: `User ${profile.email} updated profile. Fields: ${Object.keys(data).join(', ')}`
+        }).catch(e => console.warn("Audit update fail:", e));
+
         // Use setDoc with merge: true as requested for profile updates
         await setDoc(docRef, {
           ...data,
@@ -275,16 +303,134 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const resetPassword = async (email: string) => {
-    const formattedEmail = formatEmail(email);
-    await sendPasswordResetEmail(auth, formattedEmail);
+    try {
+      const formattedEmail = formatEmail(email);
+      
+      try {
+        // ATTEMPT 1: Backend Professional Flow (Custom SMTP + Audit Logs)
+        const response = await fetch('/api/auth/reset-password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            email: formattedEmail,
+            continueUrl: window.location.origin + '/login?mode=resetPassword'
+          })
+        });
+        
+        const res = await response.json();
+        if (response.ok) {
+          return { success: true, message: res.message || "Link reset sudah dikirim." };
+        }
+        
+        // If backend fails (e.g., Service Account not set or API disabled), move to fallback
+        console.warn("Backend reset attempt failed. Falling back to client-side SDK.");
+        throw new Error("FALLBACK_TO_CLIENT");
+      } catch (backendError: any) {
+        // ATTEMPT 2: Client-side Fallback (Firebase standard delivery)
+        const actionCodeSettings = {
+          url: window.location.origin + '/login?mode=resetPassword',
+          handleCodeInApp: true,
+        };
+        await sendPasswordResetEmail(auth, formattedEmail, actionCodeSettings);
+        return { success: true, message: "Link reset sudah dikirim." };
+      }
+    } catch (error: any) {
+      console.error("Reset password failed:", error);
+      let message = "Gagal mengirim link reset. Periksa kembali email Anda.";
+      
+      if (error.message.includes('auth/user-not-found') || error.code === 'auth/user-not-found') {
+        message = "Akun dengan email ini tidak ditemukan.";
+      } else if (error.message.includes('auth/invalid-email') || error.code === 'auth/invalid-email') {
+        message = "Format email tidak valid.";
+      } else if (error.message.includes('auth/too-many-requests') || error.code === 'auth/too-many-requests') {
+        message = "Terlalu banyak permintaan. Silakan coba lagi nanti.";
+      }
+      
+      return { success: false, message, code: error.code };
+    }
   };
 
   const confirmNewPassword = async (code: string, password: string) => {
-    await confirmPasswordReset(auth, code, password);
+    try {
+      await confirmPasswordReset(auth, code, password);
+      return { success: true, message: "Password berhasil diubah." };
+    } catch (error: any) {
+      return { success: false, message: error.message, code: error.code };
+    }
   };
 
   const verifyResetCode = async (code: string) => {
-    return await verifyPasswordResetCode(auth, code);
+    try {
+      const email = await verifyPasswordResetCode(auth, code);
+      return { success: true, email };
+    } catch (error: any) {
+      return { success: false, message: error.message, code: error.code };
+    }
+  };
+
+  const sendOTPReset = async (email: string) => {
+    try {
+      const response = await fetch("/api/auth/otp/request", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      
+      const contentType = response.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        const text = await response.text();
+        console.error("Backend returned non-JSON response:", text);
+        return { success: false, message: "Server sedang sibuk atau API belum aktif. Silakan hubungi admin." };
+      }
+
+      const data = await response.json();
+      return { success: data.success, message: data.message };
+    } catch (error: any) {
+      console.error("OTP Request failed:", error);
+      return { success: false, message: "Koneksi ke server gagal. Pastikan API Auth sudah aktif." };
+    }
+  };
+
+  const verifyOTPReset = async (email: string, otp: string) => {
+    try {
+      const response = await fetch("/api/auth/otp/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, otp }),
+      });
+      
+      const contentType = response.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        return { success: false, message: "Gagal verifikasi: Layanan server tidak tersedia." };
+      }
+
+      const data = await response.json();
+      return { success: data.success, message: data.message };
+    } catch (error: any) {
+      console.error("OTP Verification failed:", error);
+      return { success: false, message: "Terjadi kesalahan koneksi saat verifikasi." };
+    }
+  };
+
+  const completeOTPReset = async (email: string, otp: string, newPassword: string) => {
+    try {
+      const response = await fetch("/api/auth/otp/complete-reset", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, otp, newPassword }),
+      });
+
+      const contentType = response.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        return { success: false, message: "Gagal update password: Masalah pada server." };
+      }
+
+      const data = await response.json();
+      return { success: data.success, message: data.message };
+    } catch (error: any) {
+      console.error("OTP Reset Complete failed:", error);
+      return { success: false, message: "Terjadi kesalahan saat memperbarui password." };
+    }
   };
 
   const login = async (intendedRole?: Role, existingUser?: FirebaseUser) => {
@@ -343,6 +489,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!pendingRegistration) throw new Error("No pending registration found");
 
     const email = pendingRegistration.email;
+    
+    // NIM Uniqueness Check
+    if (data.nim) {
+      const q = query(collection(db, 'users'), where('nim', '==', data.nim), where('deleted', '!=', true));
+      const snap = await getDocs(q);
+      if (!snap.empty) {
+        throw new Error(`Data ${data.nim} sudah terdaftar di sistem. Gunakan NIM/NIP lain atau hubungi admin.`);
+      }
+    }
+
     let finalRole: Role = data.role || 'mahasiswa';
 
     // Domain-based role detection (Security)
@@ -379,7 +535,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       createdAt: serverTimestamp(),
     };
 
-    await setDoc(doc(db, 'users', pendingRegistration.uid), newProfile);
+    await Promise.all([
+      setDoc(doc(db, 'users', pendingRegistration.uid), newProfile),
+      setDoc(doc(collection(db, 'audit_logs')), {
+        action: 'REGISTER_COMPLETE',
+        performedBy: pendingRegistration.uid,
+        timestamp: serverTimestamp(),
+        details: `User ${email} completed registration with NIM ${data.nim || 'N/A'} as ${finalRole}`
+      }).catch(e => console.warn("Failed to log registration completion:", e))
+    ]);
+
     setProfile(newProfile);
     setPendingRegistration(null);
   };
@@ -389,7 +554,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   return (
-    <AuthContext.Provider value={{ user, profile, pendingRegistration, loading, login, completeRegistration, emailLogin, emailRegister, updateUserProfile, resetPassword, confirmNewPassword, verifyResetCode, logout }}>
+    <AuthContext.Provider value={{ 
+      user, 
+      profile, 
+      pendingRegistration, 
+      loading, 
+      login, 
+      completeRegistration, 
+      emailLogin, 
+      emailRegister, 
+      updateUserProfile, 
+      resetPassword, 
+      confirmNewPassword, 
+      verifyResetCode, 
+      sendOTPReset,
+      verifyOTPReset,
+      completeOTPReset,
+      logout 
+    }}>
       {children}
     </AuthContext.Provider>
   );

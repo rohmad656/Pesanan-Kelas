@@ -78,9 +78,9 @@ export default function ReportIssueModal({ isOpen, onClose, initialRoomId, initi
       try {
         await addDoc(collection(db, 'notifications'), {
           targetRole: 'staff',
-          title: 'Laporan Kerusakan Baru',
+          title: '🚨 Laporan Kerusakan Baru',
           message: `${profile?.name} melaporkan masalah di ${issueData.roomName}: ${formData.description.substring(0, 30)}...`,
-          type: 'info',
+          type: 'issue',
           isRead: false,
           createdAt: serverTimestamp(),
           meta: '/admin/laporan'
@@ -89,9 +89,9 @@ export default function ReportIssueModal({ isOpen, onClose, initialRoomId, initi
         // Also notify admins if needed
         await addDoc(collection(db, 'notifications'), {
           targetRole: 'admin',
-          title: 'Laporan Kerusakan Baru',
+          title: '🚨 Laporan Kerusakan Baru',
           message: `${profile?.name} melaporkan masalah di ${issueData.roomName}`,
-          type: 'info',
+          type: 'issue',
           isRead: false,
           createdAt: serverTimestamp(),
           meta: '/admin/laporan'

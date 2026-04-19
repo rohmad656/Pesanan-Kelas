@@ -15,6 +15,8 @@ export default function Register() {
   const [role, setRole] = useState<Role>('mahasiswa');
   const [name, setName] = useState('');
   const [identifier, setIdentifier] = useState('');
+  const [identifierError, setIdentifierError] = useState('');
+  const [isCheckingIdentifier, setIsCheckingIdentifier] = useState(false);
   const [whatsapp, setWhatsapp] = useState('');
 
   useEffect(() => {
@@ -28,6 +30,37 @@ export default function Register() {
       }
     }
   }, [pendingRegistration, navigate, setTheme]);
+
+  useEffect(() => {
+    if (!identifier) {
+      setIdentifierError('');
+      return;
+    }
+
+    const checkIdentifier = async () => {
+      setIsCheckingIdentifier(true);
+      try {
+        const { getDocs, collection, query, where } = await import('firebase/firestore');
+        const { db } = await import('../lib/firebase');
+        
+        const q = query(collection(db, 'users'), where('nim', '==', identifier), where('deleted', '!=', true));
+        const snap = await getDocs(q);
+        
+        if (!snap.empty) {
+          setIdentifierError(`${getIdentifierLabel()} ini sudah terpakai oleh akun lain.`);
+        } else {
+          setIdentifierError('');
+        }
+      } catch (e) {
+        console.warn("Failed to check NIM uniqueness:", e);
+      } finally {
+        setIsCheckingIdentifier(false);
+      }
+    };
+
+    const timer = setTimeout(checkIdentifier, 500);
+    return () => clearTimeout(timer);
+  }, [identifier, role]);
 
   const getIdentifierLabel = () => {
     if (role === 'mahasiswa') return 'NIM';
@@ -156,16 +189,32 @@ export default function Register() {
             <div className="space-y-1.5">
               <label className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-[#B4B4C8]">{getIdentifierLabel()}</label>
               <div className="relative group">
-                <Contact className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 group-focus-within:text-brand-dark-accent transition-colors" />
+                <Contact className={cn(
+                  "absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 transition-colors",
+                  identifierError ? "text-red-500" : "text-slate-400 group-focus-within:text-brand-dark-accent"
+                )} />
                 <input 
                   type="text"
                   required
                   value={identifier}
                   onChange={(e) => setIdentifier(e.target.value)}
-                  className="w-full pl-10 pr-4 py-3 bg-slate-50 dark:bg-[#2D2D44] border border-transparent dark:border-[#3F3F5A]/30 rounded-lg focus:outline-none focus:border-brand-dark-accent text-slate-900 dark:text-[#F5F5F5] transition-all"
+                  className={cn(
+                    "w-full pl-10 pr-4 py-3 bg-slate-50 dark:bg-[#2D2D44] border rounded-lg focus:outline-none transition-all",
+                    identifierError 
+                      ? "border-red-500 text-red-500 focus:border-red-600" 
+                      : "border-transparent dark:border-[#3F3F5A]/30 focus:border-brand-dark-accent text-slate-900 dark:text-[#F5F5F5]"
+                  )}
                   placeholder={getIdentifierPlaceholder()}
                 />
+                {isCheckingIdentifier && (
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                    <Loader2 className="w-4 h-4 animate-spin text-slate-400" />
+                  </div>
+                )}
               </div>
+              {identifierError && (
+                <p className="text-[10px] text-red-500 font-medium">{identifierError}</p>
+              )}
             </div>
 
             {/* WhatsApp */}

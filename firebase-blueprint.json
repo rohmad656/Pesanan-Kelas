@@ -115,6 +115,20 @@
         "meta": { "type": "string" }
       },
       "required": ["userId", "title", "message", "type", "isRead", "createdAt"]
+    },
+    "OTPReset": {
+      "title": "OTPReset",
+      "description": "Stores security-hardened 6-digit OTP for password reset",
+      "type": "object",
+      "properties": {
+        "hashedOtp": { "type": "string", "description": "SHA-256 hashed OTP code" },
+        "expiresAt": { "type": "string", "format": "date-time" },
+        "attempts": { "type": "number", "description": "Number of failed verification attempts" },
+        "email": { "type": "string", "format": "email" },
+        "isVerified": { "type": "boolean", "description": "Marked as true when OTP is verified" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["hashedOtp", "expiresAt", "email", "createdAt", "attempts"]
     }
   },
   "firestore": {
@@ -145,6 +159,10 @@
     "/role_mappings/{email}": {
       "schema": { "$ref": "#/entities/RoleMapping" },
       "description": "Stores pre-defined roles for specific emails"
+    },
+    "/otp_resets/{email}": {
+      "schema": { "$ref": "#/entities/OTPReset" },
+      "description": "Stores 6-digit OTP codes for password resets"
     }
   }
 }

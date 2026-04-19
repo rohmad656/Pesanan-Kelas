@@ -13,7 +13,7 @@ import { GoogleButton } from '../components/GoogleButton';
 
 export default function Login() {
   const [role, setRole] = useState<Role>('mahasiswa');
-  const { login, emailLogin, emailRegister, resetPassword, pendingRegistration } = useAuth();
+  const { login, emailLogin, emailRegister, sendOTPReset, verifyOTPReset, completeOTPReset, pendingRegistration } = useAuth();
   const { setTheme } = useTheme();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
@@ -29,11 +29,27 @@ export default function Login() {
       navigate('/daftar');
     }
   }, [setTheme, pendingRegistration, navigate]);
+  
+  // Auto-detect password reset from URL
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const oobCode = params.get('oobCode');
+    const mode = params.get('mode');
+    
+    if (oobCode && mode === 'resetPassword') {
+      setIsForgotPassword(true);
+      setResetStep('CODE');
+      setResetCode(oobCode);
+    }
+  }, []);
 
   const [isVisible, setIsVisible] = useState(true);
   const [exitDestination, setExitDestination] = useState<string | null>(null);
   const [isRegistering, setIsRegistering] = useState(false);
   const [isForgotPassword, setIsForgotPassword] = useState(false);
+  const [resetStep, setResetStep] = useState<'EMAIL' | 'CODE' | 'NEW_PASSWORD' | 'SUCCESS'>('EMAIL');
+  const [resetCode, setResetCode] = useState('');
+  const [isVerifyingCode, setIsVerifyingCode] = useState(false);
 
   const handleExit = (path: string) => {
     setExitDestination(path);
@@ -59,14 +75,14 @@ export default function Login() {
   }, [isVisible]);
 
   const getIdentifierLabel = () => {
-    if (isForgotPassword) return "Email Akun";
+    if (isForgotPassword && resetStep === 'EMAIL') return "Email Akun";
     if (role === 'mahasiswa') return 'Email atau NIM';
     if (role === 'dosen') return 'Email atau NIP';
     return 'ID Staf atau Email';
   };
 
   const getIdentifierPlaceholder = () => {
-    if (isForgotPassword) return "Masukkan Email Anda";
+    if (isForgotPassword && resetStep === 'EMAIL') return "Masukkan Email Anda";
     if (role === 'mahasiswa') return 'mhs@kampus.ac.id / 123456';
     if (role === 'dosen') return 'dosen@kampus.ac.id / 987654';
     return 'admin@kampus.ac.id / STF001';
@@ -88,20 +104,79 @@ export default function Login() {
     }
   };
 
+  const notifyPasswordChanged = async (email: string) => {
+    try {
+      await fetch('/api/notify-password-changed', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email })
+      });
+    } catch (e) {
+      console.warn("Failed to trigger password change notification:", e);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError('');
     try {
       if (isForgotPassword) {
-        if (!nim) {
-          setError('Silakan masukkan email Anda terlebih dahulu.');
-          setLoading(false);
-          return;
+        if (resetStep === 'EMAIL') {
+          if (!nim) {
+            setError('Silakan masukkan email Anda terlebih dahulu.');
+            setLoading(false);
+            return;
+          }
+          const res = await sendOTPReset(nim);
+          if (res.success) {
+            toast.success(res.message);
+            setResetStep('CODE');
+          } else {
+            setError(res.message || 'Gagal mengirim kode OTP.');
+          }
+        } else if (resetStep === 'CODE') {
+          if (!resetCode || resetCode.length !== 6) {
+            setError('Silakan masukkan 6 digit kode OTP yang valid.');
+            setLoading(false);
+            return;
+          }
+          
+          setIsVerifyingCode(true);
+          const res = await verifyOTPReset(nim, resetCode);
+          if (res.success) {
+            setResetStep('NEW_PASSWORD');
+            toast.success('Kode valid! Silakan masukkan sandi baru.');
+          } else {
+            setError(res.message || 'Kode tidak valid atau sudah kadaluarsa.');
+          }
+          setIsVerifyingCode(false);
+        } else if (resetStep === 'NEW_PASSWORD') {
+          if (password !== confirmPassword) {
+            setError('Konfirmasi kata sandi tidak cocok.');
+            setLoading(false);
+            return;
+          }
+          if (password.length < 8) {
+            setError('Kata sandi minimal harus 8 karakter.');
+            setLoading(false);
+            return;
+          }
+          const res = await completeOTPReset(nim, resetCode, password);
+          if (res.success) {
+            await notifyPasswordChanged(nim);
+            setResetStep('SUCCESS');
+            setResetCode('');
+            setPassword('');
+            setConfirmPassword('');
+          } else {
+            setError(res.message || 'Gagal mengubah password.');
+          }
+        } else if (resetStep === 'SUCCESS') {
+          setIsForgotPassword(false);
+          setResetStep('EMAIL');
+          setError('');
         }
-        await resetPassword(nim);
-        toast.success('Link reset password telah dikirim ke email Anda.');
-        setIsForgotPassword(false);
       } else if (isRegistering) {
         if (password !== confirmPassword) {
           setError('Konfirmasi kata sandi tidak cocok.');
@@ -257,7 +332,11 @@ export default function Login() {
                 <button 
                   onClick={() => {
                     if (isForgotPassword) {
-                      setIsForgotPassword(false);
+                      if (resetStep === 'CODE') setResetStep('EMAIL');
+                      else if (resetStep === 'NEW_PASSWORD') setResetStep('CODE');
+                      else {
+                        setIsForgotPassword(false);
+                      }
                       setError('');
                     } else {
                       handleExit('/');
@@ -269,8 +348,8 @@ export default function Login() {
                 </button>
               </div>
 
-          {/* Modal Content */}
-          <form onSubmit={handleSubmit} className="flex flex-col flex-1 overflow-hidden">
+              {/* Modal Content */}
+              <form onSubmit={handleSubmit} className="flex flex-col flex-1 overflow-hidden">
             <motion.div 
               initial="hidden"
               animate="visible"
@@ -295,10 +374,17 @@ export default function Login() {
                 className="text-center mb-6 pt-4"
               >
                 <h1 className="text-2xl font-extrabold text-[#3b134b] dark:text-[#F5F5F5] mb-2 tracking-tight">
-                  {isForgotPassword ? 'Reset Kata Sandi' : isRegistering ? 'Daftar Akun Baru' : 'Selamat Datang Kembali'}
+                  {isForgotPassword ? (
+                    resetStep === 'EMAIL' ? 'Lupa Kata Sandi' : 
+                    resetStep === 'CODE' ? 'Verifikasi Kode' : 'Atur Sandi Baru'
+                  ) : isRegistering ? 'Daftar Akun Baru' : 'Selamat Datang Kembali'}
                 </h1>
                 <p className="text-slate-500 dark:text-[#B4B4C8] text-sm italic">
-                  {isForgotPassword ? 'Masukkan email Anda untuk menerima link reset kata sandi' : isRegistering ? 'Buat akun untuk mengakses layanan kampus' : 'Masuk untuk mengelola jadwal kampus Anda'}
+                  {isForgotPassword ? (
+                    resetStep === 'EMAIL' ? 'Masukkan email Anda untuk menerima kode OTP 6-digit' :
+                    resetStep === 'CODE' ? 'Masukkan 6 digit kode OTP yang dikirim ke email Anda' :
+                    'Masukkan kata sandi baru untuk akun Anda'
+                  ) : isRegistering ? 'Buat akun untuk mengakses layanan kampus' : 'Masuk untuk mengelola jadwal kampus Anda'}
                 </p>
               </motion.div>
 
@@ -397,38 +483,149 @@ export default function Login() {
                   )}
                 </AnimatePresence>
 
-                <motion.div 
-                  key={role}
-                  initial={{ opacity: 0, x: -10 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ duration: 0.3 }}
-                  className="space-y-1.5"
-                >
-                  <label htmlFor="nim" className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-[#B4B4C8]">{getIdentifierLabel()}</label>
-                  <div className="relative group">
-                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 group-focus-within:text-brand-700 dark:text-brand-dark-accent transition-colors" aria-hidden="true" />
-                    <input 
-                      id="nim"
-                      type="text"
-                      required
-                      autoFocus={!isRegistering}
-                      value={nim}
-                      onChange={handleIdentifierChange}
-                      className={cn(
-                        "w-full pl-10 pr-4 py-3 bg-slate-50 dark:bg-[#2D2D44] border rounded-lg focus:outline-none focus:ring-1 transition-all text-slate-900 dark:text-[#F5F5F5] placeholder:text-slate-400",
-                        validationError ? "border-red-500/50 focus:border-red-500 focus:ring-red-500" : "border-transparent dark:border-[#3F3F5A]/30 focus:border-brand-400 dark:border-brand-dark-accent focus:ring-brand-dark-accent-light"
-                      )}
-                      placeholder={getIdentifierPlaceholder()}
-                      aria-label={getIdentifierLabel()}
-                      aria-invalid={!!validationError}
-                    />
-                  </div>
-                  {validationError && (
-                    <p className="text-xs text-red-400 flex items-center gap-1 mt-1">
-                      <AlertCircle className="w-3 h-3" /> {validationError}
-                    </p>
+                <AnimatePresence mode="wait">
+                  {isForgotPassword && resetStep === 'CODE' && (
+                    <motion.div 
+                      key="reset-code"
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="space-y-1.5 overflow-hidden"
+                    >
+                      <label htmlFor="resetCode" className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-[#B4B4C8]">Kode OTP 6-Digit</label>
+                      <div className="relative group">
+                        <ShieldCheck className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 group-focus-within:text-brand-700 dark:text-brand-dark-accent transition-colors" />
+                        <input 
+                          id="resetCode"
+                          type="text"
+                          required
+                          maxLength={6}
+                          value={resetCode}
+                          onChange={(e) => setResetCode(e.target.value.replace(/\D/g, ''))}
+                          className="w-full pl-10 pr-4 py-3 bg-slate-50 dark:bg-[#2D2D44] border border-transparent dark:border-[#3F3F5A]/30 rounded-lg focus:outline-none focus:border-brand-400 dark:border-brand-dark-accent text-slate-900 dark:text-[#F5F5F5] placeholder:text-slate-400 font-mono text-center tracking-[0.5em] text-lg transition-all"
+                          placeholder="000000"
+                        />
+                        {isVerifyingCode && (
+                          <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                            <Loader2 className="w-4 h-4 animate-spin text-slate-400" />
+                          </div>
+                        )}
+                      </div>
+                      <p className="text-[10px] text-slate-500 dark:text-[#B4B4C8] mt-2 italic px-1">
+                        Tips: Periksa folder <strong>Spam</strong> jika Anda tidak menerima email di Inbox Utama.
+                      </p>
+                    </motion.div>
                   )}
-                </motion.div>
+
+                  {isForgotPassword && resetStep === 'NEW_PASSWORD' && (
+                    <motion.div 
+                      key="new-password-fields"
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="space-y-5 overflow-hidden"
+                    >
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-[#B4B4C8]">Sandi Baru</label>
+                        <div className="relative group">
+                          <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                          <input 
+                            type={showPassword ? 'text' : 'password'}
+                            required
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
+                            className="w-full pl-10 pr-10 py-3 bg-slate-50 dark:bg-[#2D2D44] border border-transparent rounded-lg focus:outline-none focus:border-brand-400 text-slate-900 dark:text-[#F5F5F5]"
+                            placeholder="Sandi baru"
+                          />
+                          <button 
+                            type="button"
+                            onClick={() => setShowPassword(!showPassword)}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400"
+                          >
+                            {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                          </button>
+                        </div>
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-[#B4B4C8]">Konfirmasi Sandi Baru</label>
+                        <div className="relative group">
+                          <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                          <input 
+                            type={showConfirmPassword ? 'text' : 'password'}
+                            required
+                            value={confirmPassword}
+                            onChange={(e) => setConfirmPassword(e.target.value)}
+                            className="w-full pl-10 pr-10 py-3 bg-slate-50 dark:bg-[#2D2D44] border border-transparent rounded-lg focus:outline-none focus:border-brand-400 text-slate-900 dark:text-[#F5F5F5]"
+                            placeholder="Ulangi sandi baru"
+                          />
+                          <button 
+                            type="button"
+                            onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400"
+                          >
+                            {showConfirmPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                          </button>
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+
+                  {isForgotPassword && resetStep === 'SUCCESS' && (
+                    <motion.div 
+                      key="success-step"
+                      initial={{ opacity: 0, scale: 0.9 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      className="py-6 text-center space-y-4"
+                    >
+                      <div className="flex justify-center">
+                        <div className="w-16 h-16 bg-green-500/10 rounded-full flex items-center justify-center border border-green-500/20">
+                          <ShieldCheck className="w-8 h-8 text-green-500" />
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <h3 className="text-xl font-bold text-slate-900 dark:text-white">Sandi Berhasil Diubah</h3>
+                        <p className="text-sm text-slate-500 dark:text-[#B4B4C8]">
+                          Kata sandi Anda telah diperbarui. Silakan gunakan sandi baru untuk masuk ke akun Anda.
+                        </p>
+                      </div>
+                    </motion.div>
+                  )}
+
+                  {(!isForgotPassword || (resetStep === 'EMAIL' && resetStep !== 'SUCCESS')) && (
+                    <motion.div 
+                      key="main-identifier"
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ duration: 0.3 }}
+                      className="space-y-1.5"
+                    >
+                      <label htmlFor="nim" className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-[#B4B4C8]">{getIdentifierLabel()}</label>
+                      <div className="relative group">
+                        <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 group-focus-within:text-brand-700 dark:text-brand-dark-accent transition-colors" aria-hidden="true" />
+                        <input 
+                          id="nim"
+                          type="text"
+                          required
+                          autoFocus={!isRegistering}
+                          value={nim}
+                          onChange={handleIdentifierChange}
+                          className={cn(
+                            "w-full pl-10 pr-4 py-3 bg-slate-50 dark:bg-[#2D2D44] border rounded-lg focus:outline-none focus:ring-1 transition-all text-slate-900 dark:text-[#F5F5F5] placeholder:text-slate-400",
+                            validationError ? "border-red-500/50 focus:border-red-500 focus:ring-red-500" : "border-transparent dark:border-[#3F3F5A]/30 focus:border-brand-400 dark:border-brand-dark-accent focus:ring-brand-dark-accent-light"
+                          )}
+                          placeholder={getIdentifierPlaceholder()}
+                          aria-label={getIdentifierLabel()}
+                          aria-invalid={!!validationError}
+                        />
+                      </div>
+                      {validationError && (
+                        <p className="text-xs text-red-400 flex items-center gap-1 mt-1">
+                          <AlertCircle className="w-3 h-3" /> {validationError}
+                        </p>
+                      )}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
 
                 <AnimatePresence mode="wait">
                   {!isForgotPassword && (
@@ -446,6 +643,7 @@ export default function Login() {
                             type="button" 
                             onClick={() => {
                               setIsForgotPassword(true);
+                              setResetStep('EMAIL');
                               setError('');
                             }} 
                             className="text-xs font-semibold text-blue-600 dark:text-[#86d2ff] hover:underline focus:outline-none focus:ring-2 focus:ring-[#86d2ff] rounded"
@@ -562,7 +760,11 @@ export default function Login() {
                   <><Loader2 className="w-5 h-5 animate-spin" /> Memproses...</>
                 ) : (
                   <>
-                    {isForgotPassword ? 'Kirim Link Reset' : isRegistering ? 'Daftar Sekarang' : 'Masuk Sekarang'}
+                    {isForgotPassword ? (
+                      resetStep === 'EMAIL' ? 'Kirim Kode OTP' :
+                      resetStep === 'CODE' ? 'Verifikasi OTP' : 
+                      resetStep === 'SUCCESS' ? 'Selesai & Masuk' : 'Ubah Kata Sandi'
+                    ) : isRegistering ? 'Daftar Sekarang' : 'Masuk Sekarang'}
                     {!isForgotPassword && <LogIn className="w-5 h-5 group-hover:translate-x-1 transition-transform" />}
                   </>
                 )}
@@ -591,6 +793,7 @@ export default function Login() {
                   <button 
                     onClick={() => {
                       setIsForgotPassword(false);
+                      setResetStep('EMAIL');
                       setError('');
                     }} 
                     className="text-brand-700 dark:text-brand-dark-accent font-bold hover:text-pink-600 dark:text-[#ffafd5] transition-colors underline decoration-2 underline-offset-4 decoration-brand-dark-accent-light/30"
@@ -618,6 +821,6 @@ export default function Login() {
       </motion.div>
     )}
   </AnimatePresence>
-    </div>
+</div>
   );
 }

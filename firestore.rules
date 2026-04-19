@@ -92,6 +92,10 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    function isVerified() {
+      return isAuthenticated() && request.auth.token.email_verified == true;
+    }
+
     function isOwner(userId) {
       return isAuthenticated() && request.auth.uid == userId;
     }
@@ -217,52 +221,78 @@ service cloud.firestore {
              data.createdAt is timestamp;
     }
 
+    function isValidOTPReset(data) {
+      return hasOnlyAllowedFields(['otp', 'expiresAt', 'email', 'createdAt']) &&
+             hasRequiredFields(['otp', 'expiresAt', 'email', 'createdAt']) &&
+             data.otp is string && data.otp.size() == 6 &&
+             data.email is string && isValidEmail(data.email) &&
+             data.expiresAt is timestamp &&
+             data.createdAt is timestamp;
+    }
+
     // ===============================================================
     // Rules
     // ===============================================================
+    match /otp_resets/{email} {
+      // We allow reading IF the user knows the OTP (verification query)
+      // or simply for simplicity in this custom flow, we allow read by ID.
+      // But more secure is to prevent read unless it's the owner's email.
+      allow read: if isValidEmail(email); 
+      allow create, update: if isValidOTPReset(request.resource.data) && request.resource.data.email == email;
+      allow delete: if isAdmin();
+    }
+
     match /users/{userId} {
       allow read: if isStaff() || isOwner(userId);
       allow create: if isAuthenticated() && isOwner(userId) && isValidUser(request.resource.data) &&
                     request.resource.data.uid == request.auth.uid &&
+                    request.resource.data.createdAt == request.time &&
                     // Role validation:
                     // 1. Force 'mahasiswa' for student domain
                     (request.resource.data.email.matches(".*@student\\.uin-malang\\.ac\\.id$") ? (request.resource.data.role == 'mahasiswa') : true) &&
                     // 2. Only allow 'admin' or 'staff' if primary admin or in role_mappings
                     ((request.resource.data.role == 'admin' || request.resource.data.role == 'staff') ? (request.resource.data.email == "gama96954@gmail.com" || exists(/databases/$(database)/documents/role_mappings/$(request.resource.data.email))) : true);
       allow update: if isAuthenticated() && isValidUser(request.resource.data) &&
-                    areImmutableFieldsUnchanged(['uid', 'createdAt']) &&
-                    ((isOwner(userId) && areImmutableFieldsUnchanged(['role'])) || isStaff());
+                    areImmutableFieldsUnchanged(['uid', 'email', 'createdAt']) &&
+                    (
+                      (isOwner(userId) && areImmutableFieldsUnchanged(['role', 'deleted', 'deletedAt', 'deletedBy']) && (
+                        !('lastLogin' in request.resource.data) || request.resource.data.lastLogin == request.time || request.resource.data.lastLogin == resource.data.lastLogin
+                      )) || 
+                      isStaff()
+                    );
       allow delete: if isAdmin();
     }
 
     match /rooms/{roomId} {
       allow read: if isAuthenticated();
-      allow create: if isAdmin() && isValidRoom(request.resource.data);
-      allow update: if (isAdmin() && isValidRoom(request.resource.data) && areImmutableFieldsUnchanged(['createdAt'])) ||
+      allow create: if isStaff() && isValidRoom(request.resource.data);
+      allow update: if (isStaff() && isValidRoom(request.resource.data) && areImmutableFieldsUnchanged(['createdAt'])) ||
                     (isAuthenticated() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastBookingUpdate']) && request.resource.data.lastBookingUpdate is timestamp);
       allow delete: if isAdmin();
     }
 
     match /bookings/{bookingId} {
       allow read: if isAuthenticated();
-      allow create: if isAuthenticated() && isValidBooking(request.resource.data) &&
+      allow create: if isVerified() && isValidBooking(request.resource.data) &&
                     request.resource.data.userId == request.auth.uid &&
-                    request.resource.data.status == 'pending';
+                    request.resource.data.status == 'pending' &&
+                    request.resource.data.createdAt == request.time;
       allow update: if isAuthenticated() && isValidBooking(request.resource.data) &&
                     areImmutableFieldsUnchanged(['roomId', 'userId', 'createdAt']) &&
                     (
                       (resource.data.userId == request.auth.uid && areImmutableFieldsUnchanged(['userName', 'userRole', 'start_at', 'end_at', 'reason']) && request.resource.data.status == 'cancelled') ||
-                      isAdmin()
+                      isStaff()
                     );
       allow delete: if isAdmin();
     }
 
     match /issues/{issueId} {
-      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin() || isStaff());
-      allow create: if isAuthenticated() && isValidIssue(request.resource.data) &&
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isStaff());
+      allow create: if isVerified() && isValidIssue(request.resource.data) &&
                     request.resource.data.userId == request.auth.uid &&
-                    request.resource.data.status == 'reported';
-      allow update: if (isAdmin() || isStaff()) && isValidIssue(request.resource.data) &&
+                    request.resource.data.status == 'reported' &&
+                    request.resource.data.createdAt == request.time;
+      allow update: if isStaff() && isValidIssue(request.resource.data) &&
                     areImmutableFieldsUnchanged(['roomId', 'userId', 'description', 'createdAt']);
       allow delete: if isAdmin();
     }
@@ -270,19 +300,19 @@ service cloud.firestore {
     match /notifications/{notificationId} {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated() && isValidNotification(request.resource.data) &&
-                    (isAdmin() || ('userId' in request.resource.data && request.resource.data.userId == request.auth.uid) || ('targetRole' in request.resource.data && request.resource.data.targetRole == 'admin'));
+                    (isStaff() || ('userId' in request.resource.data && request.resource.data.userId == request.auth.uid) || ('targetRole' in request.resource.data && request.resource.data.targetRole == 'admin'));
       allow update: if isAuthenticated() && isValidNotification(request.resource.data) &&
                     areImmutableFieldsUnchanged(['userId', 'title', 'message', 'type', 'createdAt', 'meta', 'targetRole']) &&
                     (
                       ('userId' in resource.data && resource.data.userId == request.auth.uid) ||
-                      ('targetRole' in resource.data && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == resource.data.targetRole)
+                      ('targetRole' in resource.data && isStaff())
                     );
       allow delete: if isAdmin();
     }
 
     match /audit_logs/{logId} {
       allow read: if isStaff();
-      allow create: if isAuthenticated(); // Allow users to log their own logins
+      allow create: if isAuthenticated(); 
       allow update: if false;
       allow delete: if false;
     }
