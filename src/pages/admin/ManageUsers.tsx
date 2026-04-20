@@ -3,6 +3,7 @@ import { db, handleFirestoreError, OperationType, auth } from '../../lib/firebas
 import { Filter, Trash2, Users, Search, ChevronLeft, ChevronRight, AlertTriangle, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import toast from 'react-hot-toast';
+import { cn } from '../../lib/utils';
 
 import BaseModal from '../../components/BaseModal';
 
@@ -238,7 +239,10 @@ export default function ManageUsers() {
                         )}
                       </div>
                       <div className="min-w-0">
-                        <p className="truncate">{user.name}</p>
+                        <div className="flex items-center gap-2">
+                          <p className={cn("truncate", user.isOrphan && "text-red-500 dark:text-red-400 font-medium")}>{user.name}</p>
+                          {user.isOrphan && <AlertTriangle className="w-3 h-3 text-red-500" title="Akun ini telah dihapus tetapi datanya masih ada" />}
+                        </div>
                         {user.division && (
                           <p className="text-[10px] text-slate-500 font-normal truncate uppercase tracking-tighter">{user.division}</p>
                         )}
@@ -282,11 +286,19 @@ export default function ManageUsers() {
                     </select>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    {user.lastLogin ? (
+                    {user.isOrphan ? (
                       <div className="flex flex-col">
                         <div className="flex items-center gap-1.5 mb-0.5">
+                          <span className="w-1.5 h-1.5 bg-red-500 rounded-full" />
+                          <span className="text-[10px] font-bold text-red-600 dark:text-red-400 uppercase tracking-wider">NONAKTIF</span>
+                        </div>
+                        <span className="text-[10px] text-slate-400 italic">Akun dihapus, data tersisa</span>
+                      </div>
+                    ) : user.lastLogin ? (
+                      <div className="flex flex-col">
+                        <div className="flex items-center gap-1.5 mb-0.5" title="User terverifikasi di system Auth">
                           <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
-                          <span className="text-[10px] font-bold text-green-600 dark:text-green-500 uppercase tracking-wider">Aktif</span>
+                          <span className="text-[10px] font-bold text-green-600 dark:text-green-500 uppercase tracking-wider">AKTIF</span>
                         </div>
                         <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">
                           {new Date(user.lastLogin.toMillis?.() || user.lastLogin).toLocaleDateString('id-ID', {
@@ -302,7 +314,7 @@ export default function ManageUsers() {
                       <div className="flex flex-col">
                         <div className="flex items-center gap-1.5 mb-0.5">
                           <span className="w-1.5 h-1.5 bg-slate-300 dark:bg-slate-600 rounded-full" />
-                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Nonaktif</span>
+                          <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">NONAKTIF</span>
                         </div>
                         <span className="text-[10px] text-slate-400 italic">Belum pernah login</span>
                       </div>

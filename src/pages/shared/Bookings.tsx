@@ -6,8 +6,8 @@ import { db, handleFirestoreError, OperationType } from '../../lib/firebase';
 import { Calendar, Clock, MapPin, XCircle, Download, CalendarPlus } from 'lucide-react';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
-
-import { motion, AnimatePresence } from 'motion/react';
+import { AnimatePresence, motion } from 'motion/react';
+import { UI_STRINGS } from '../../constants/ui-strings';
 
 export default function Bookings() {
   const { profile } = useAuth();
@@ -118,11 +118,11 @@ Harap tunjukkan bukti ini kepada petugas jika diminta.`;
 
   const getStatusText = (status: string) => {
     switch (status) {
-      case 'pending': return 'Menunggu Verifikasi';
-      case 'approved': return 'Disetujui';
-      case 'rejected': return 'Ditolak';
-      case 'cancelled': return 'Dibatalkan';
-      case 'completed': return 'Selesai';
+      case 'pending': return t.booking.status_pending;
+      case 'approved': return t.booking.status_approved;
+      case 'rejected': return t.booking.status_rejected;
+      case 'cancelled': return t.booking.status_cancelled;
+      case 'completed': return t.booking.status_completed;
       default: return status;
     }
   };
@@ -171,6 +171,8 @@ Harap tunjukkan bukti ini kepada petugas jika diminta.`;
     return b;
   });
 
+  const t = UI_STRINGS;
+
   if (loadingBookings) {
     return (
       <div className="space-y-6">
@@ -208,8 +210,8 @@ Harap tunjukkan bukti ini kepada petugas jika diminta.`;
       className="space-y-6"
     >
       <div>
-        <h1 className="text-2xl font-bold text-slate-900 dark:text-[#F5F5F5]">Pesanan Saya</h1>
-        <p className="text-slate-600 dark:text-[#B4B4C8] text-sm">Pantau status pemesanan ruangan Anda.</p>
+        <h1 className="text-2xl font-bold text-slate-900 dark:text-[#F5F5F5]">{t.booking.my_bookings}</h1>
+        <p className="text-slate-600 dark:text-[#B4B4C8] text-sm">{t.booking.my_bookings_desc}</p>
       </div>
 
       <div className="flex gap-4 border-b border-slate-200 dark:border-[#3F3F5A]/30 pb-px">
@@ -219,7 +221,7 @@ Harap tunjukkan bukti ini kepada petugas jika diminta.`;
             activeTab === 'active' ? 'text-brand-700 dark:text-brand-dark-accent' : 'text-slate-600 dark:text-[#B4B4C8] hover:text-slate-900 dark:text-[#F5F5F5]'
           }`}
         >
-          Pesanan Aktif
+          {t.booking.tab_active}
           {activeTab === 'active' && (
             <span className="absolute bottom-0 left-0 w-full h-0.5 bg-brand-dark-accent-light rounded-t-full"></span>
           )}
@@ -230,7 +232,7 @@ Harap tunjukkan bukti ini kepada petugas jika diminta.`;
             activeTab === 'history' ? 'text-brand-700 dark:text-brand-dark-accent' : 'text-slate-600 dark:text-[#B4B4C8] hover:text-slate-900 dark:text-[#F5F5F5]'
           }`}
         >
-          Riwayat Pesanan
+          {t.booking.tab_history}
           {activeTab === 'history' && (
             <span className="absolute bottom-0 left-0 w-full h-0.5 bg-brand-dark-accent-light rounded-t-full"></span>
           )}
@@ -241,14 +243,14 @@ Harap tunjukkan bukti ini kepada petugas jika diminta.`;
         {displayedBookings.length === 0 ? (
           <div className="bg-white dark:bg-[#27273A] dark:shadow-lg dark:shadow-black/20 rounded-2xl border border-slate-200 dark:border-[#3F3F5A]/30 p-12 text-center text-slate-600 dark:text-[#B4B4C8]">
             <Calendar className="w-12 h-12 mx-auto mb-3 opacity-20" />
-            <p>{activeTab === 'active' ? 'Anda belum memiliki pesanan aktif.' : 'Belum ada riwayat pesanan.'}</p>
+            <p>{activeTab === 'active' ? t.booking.empty_active : t.booking.empty_history}</p>
           </div>
         ) : (
           displayedBookings.map(booking => (
             <div key={booking.id} className="bg-white dark:bg-[#27273A] dark:shadow-lg dark:shadow-black/20 rounded-2xl border border-slate-200 dark:border-[#3F3F5A]/30 p-6 flex flex-col md:flex-row md:items-center justify-between gap-6">
               <div className="flex-1">
                 <div className="flex items-center gap-3 mb-2">
-                  <h3 className="text-lg font-bold text-slate-900 dark:text-[#F5F5F5]">Ruangan: {booking.roomName || booking.roomId}</h3>
+                  <h3 className="text-lg font-bold text-slate-900 dark:text-[#F5F5F5]">{t.common.building}: {booking.roomName || booking.roomId}</h3>
                   <span className={`px-3 py-1 rounded-full text-xs font-bold border ${getStatusColor(booking.displayStatus)}`}>
                     {getStatusText(booking.displayStatus)}
                   </span>
@@ -263,7 +265,7 @@ Harap tunjukkan bukti ini kepada petugas jika diminta.`;
                   </div>
                   <div className="flex items-center gap-2">
                     <MapPin className="w-4 h-4" />
-                    <span>Alasan: {booking.reason}</span>
+                    <span>{t.booking.reason_label}: {booking.reason}</span>
                   </div>
                 </div>
               </div>
@@ -275,13 +277,13 @@ Harap tunjukkan bukti ini kepada petugas jika diminta.`;
                       onClick={() => handleAddToCalendar(booking)}
                       className="px-4 py-2 bg-brand-100 dark:bg-[#32324A] text-blue-600 dark:text-[#86d2ff] hover:bg-brand-dark-hover hover:scale-105 active:scale-95 rounded-xl font-medium transition-all flex items-center gap-2 text-sm border border-[#86d2ff]/30"
                     >
-                      <CalendarPlus className="w-4 h-4" /> Kalender
+                      <CalendarPlus className="w-4 h-4" /> {t.booking.calendar}
                     </button>
                     <button 
                       onClick={() => handleDownloadProof(booking)}
                       className="px-4 py-2 bg-brand-100 dark:bg-[#32324A] text-brand-700 dark:text-brand-dark-accent hover:bg-brand-dark-hover hover:scale-105 active:scale-95 rounded-xl font-medium transition-all flex items-center gap-2 text-sm"
                     >
-                      <Download className="w-4 h-4" /> Bukti Booking
+                      <Download className="w-4 h-4" /> {t.booking.proof_download}
                     </button>
                   </>
                 )}
@@ -290,7 +292,7 @@ Harap tunjukkan bukti ini kepada petugas jika diminta.`;
                     onClick={() => setCancelId(booking.id)}
                     className="px-4 py-2 border border-red-500/30 text-red-400 hover:bg-red-500/10 hover:scale-105 active:scale-95 rounded-xl font-medium transition-all flex items-center gap-2 text-sm"
                   >
-                    <XCircle className="w-4 h-4" /> Batalkan
+                    <XCircle className="w-4 h-4" /> {t.common.cancel}
                   </button>
                 )}
               </div>
@@ -314,20 +316,20 @@ Harap tunjukkan bukti ini kepada petugas jika diminta.`;
               onClick={(e) => e.stopPropagation()}
             >
               <XCircle className="w-12 h-12 text-red-400 mx-auto mb-4" />
-              <h3 className="text-xl font-bold text-slate-900 dark:text-[#F5F5F5] mb-2">Batalkan Pesanan?</h3>
-              <p className="text-slate-600 dark:text-[#B4B4C8] text-sm mb-6">Apakah Anda yakin ingin membatalkan pesanan ruangan ini? Tindakan ini tidak dapat diurungkan.</p>
+              <h3 className="text-xl font-bold text-slate-900 dark:text-[#F5F5F5] mb-2">{t.booking.cancel_confirm_title}</h3>
+              <p className="text-slate-600 dark:text-[#B4B4C8] text-sm mb-6">{t.booking.cancel_confirm_desc}</p>
               <div className="flex gap-3">
                 <button 
                   onClick={() => setCancelId(null)}
                   className="flex-1 py-2.5 bg-transparent border border-brand-dark-border-strong text-slate-600 dark:text-[#B4B4C8] font-bold rounded-xl hover:bg-brand-100 dark:bg-[#32324A] hover:scale-[1.02] active:scale-[0.98] transition-all"
                 >
-                  Kembali
+                  {t.common.back}
                 </button>
                 <button 
                   onClick={handleCancel}
                   className="flex-1 py-2.5 bg-red-500/20 text-red-400 border border-red-500/30 font-bold rounded-xl hover:bg-red-500/30 hover:scale-[1.02] active:scale-[0.98] transition-all"
                 >
-                  Ya, Batalkan
+                  {t.booking.cancel_yes}
                 </button>
               </div>
             </motion.div>

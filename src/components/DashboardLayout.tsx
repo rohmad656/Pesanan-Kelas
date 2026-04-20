@@ -23,6 +23,7 @@ import {
 import { cn } from '../lib/utils';
 import { collection, query, where, onSnapshot, writeBatch, doc, serverTimestamp, updateDoc, or } from 'firebase/firestore';
 import { db } from '../lib/firebase';
+import toast from 'react-hot-toast';
 
 import { useData } from '../contexts/DataContext';
 
@@ -151,7 +152,7 @@ export default function DashboardLayout() {
         collection(db, 'notifications'),
         or(
           where('userId', '==', profile.uid),
-          where('targetRole', 'in', ['admin', 'staff'])
+          where('targetRole', '==', 'admin')
         )
       );
     } else {
@@ -165,6 +166,24 @@ export default function DashboardLayout() {
     }
     
     const unsubscribe = onSnapshot(q, (snapshot) => {
+      snapshot.docChanges().forEach((change) => {
+        if (change.type === 'added') {
+          const data = change.doc.data();
+          // Show toast for new, unread notifications created recently (last 10s)
+          // to avoid spamming on initial component load or old unread notifs
+          if (!data.isRead && data.createdAt) {
+            const now = Date.now();
+            const createdAt = data.createdAt.toMillis?.() || now;
+            if (now - createdAt < 10000) {
+              toast(data.title, {
+                icon: '🔔',
+                duration: 4000,
+              });
+            }
+          }
+        }
+      });
+
       if (!snapshot.empty) {
         const notifs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any))
           .sort((a, b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0));
@@ -174,6 +193,8 @@ export default function DashboardLayout() {
         setNotifications([]);
         setUnreadCount(0);
       }
+    }, (error) => {
+      console.error("Notification listener error:", error);
     });
     return () => unsubscribe();
   }, [profile]);
@@ -192,7 +213,12 @@ export default function DashboardLayout() {
     if (!notif.isRead) {
       await updateDoc(doc(db, 'notifications', notif.id), { isRead: true });
     }
-    navigate('/pesan');
+    // Navigate to the module if meta path is provided, otherwise to general messages
+    if (notif.meta) {
+      navigate(notif.meta);
+    } else {
+      navigate('/pesan');
+    }
   };
 
   const handleLogout = async () => {
@@ -429,38 +455,83 @@ export default function DashboardLayout() {
                       <p className="text-center text-sm text-slate-500 py-4">Belum ada notifikasi</p>
                     ) : (
                       notifications.map(notif => {
-                        let icon = '🔔';
-                        let bgClass = '';
-                        if (notif.type === 'reminder') { icon = '⏰'; bgClass = 'bg-blue-100 dark:bg-blue-800/50 text-blue-600 dark:text-blue-400'; }
-                        if (notif.type === 'approved') { icon = '✅'; bgClass = 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400'; }
-                        if (notif.type === 'rejected') { icon = '❌'; bgClass = 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400'; }
-                        if (notif.type === 'issue') { icon = '⚠️'; bgClass = 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-600 dark:text-yellow-400'; }
+                        let IconComponent = Bell;
+                        let iconColorClass = 'text-slate-600 dark:text-[#B4B4C8]';
+                        let badgeColorClass = 'bg-slate-500';
+                        let badgeText = '';
+
+                        // Category: Booking
+                        if (['booking', 'approved', 'rejected', 'reminder'].includes(notif.type)) {
+                          IconComponent = CalendarDays;
+                          iconColorClass = 'text-blue-500 dark:text-blue-400';
+                          if (notif.type === 'approved') {
+                            badgeColorClass = 'bg-green-500';
+                            badgeText = 'Disetujui';
+                          } else if (notif.type === 'rejected') {
+                            badgeColorClass = 'bg-red-500';
+                            badgeText = 'Ditolak';
+                          } else if (notif.type === 'reminder') {
+                            badgeColorClass = 'bg-amber-500';
+                            badgeText = 'Ingat';
+                          }
+                        } 
+                        // Category: Laporan / Issue
+                        else if (['issue', 'laporan', 'report'].includes(notif.type)) {
+                          IconComponent = AlertCircle;
+                          iconColorClass = 'text-amber-500 dark:text-amber-400';
+                          if (notif.title.toLowerCase().includes('selesai') || notif.message.toLowerCase().includes('selesai')) {
+                            badgeColorClass = 'bg-green-500';
+                            badgeText = 'Selesai';
+                          }
+                        }
+                        // Category: Info
+                        else {
+                          IconComponent = Bell;
+                          iconColorClass = 'text-brand-500 dark:text-brand-dark-accent';
+                        }
 
                         return (
                           <div 
                             key={notif.id}
                             onClick={() => handleNotificationClick(notif)}
                             className={cn(
-                              "p-3 rounded-lg cursor-pointer transition-colors flex gap-3 items-start",
+                              "p-3 rounded-lg cursor-pointer transition-colors flex gap-3 items-start relative group/item",
                               notif.isRead 
                                 ? "opacity-75 hover:bg-slate-50 dark:hover:bg-[#32324A]/30" 
                                 : "bg-brand-50/50 dark:bg-[#32324A]/50 border border-brand-100 dark:border-brand-800/30 hover:bg-brand-100/50 dark:hover:bg-[#32324A]"
                             )}
                           >
-                            <div className={cn("w-8 h-8 rounded-full flex items-center justify-center shrink-0 mt-0.5", bgClass)}>
-                              <span className="text-lg">{icon}</span>
+                            <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center shrink-0 mt-0.5 bg-slate-100 dark:bg-[#1E1E2F] border border-slate-200 dark:border-[#3F3F5A]/50 transition-transform group-hover/item:scale-110", iconColorClass)}>
+                              <IconComponent className="w-5 h-5" />
                             </div>
-                            <div className="flex-1 min-w-0">
-                              <p className={cn("text-sm text-slate-900 dark:text-[#F5F5F5] truncate", notif.isRead ? "font-medium" : "font-bold")}>
-                                {notif.title}
-                              </p>
-                              <p className="text-xs text-slate-600 dark:text-[#B4B4C8] mt-1 line-clamp-2">{notif.message}</p>
-                              {notif.meta && (
-                                <p className="text-[10px] text-slate-500 dark:text-[#B4B4C8]/70 mt-1 font-medium bg-white/50 dark:bg-black/20 inline-block px-2 py-0.5 rounded">
-                                  {notif.meta}
+                            <div className="flex-1 min-w-0 pr-2">
+                              <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+                                <p className={cn("text-sm text-slate-900 dark:text-[#F5F5F5] truncate font-bold")}>
+                                  {notif.title}
                                 </p>
-                              )}
+                                {badgeText && (
+                                  <span className={cn("text-[9px] px-1.5 py-0.5 rounded-full text-white font-extrabold uppercase tracking-wider", badgeColorClass)}>
+                                    {badgeText}
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-[11px] leading-relaxed text-slate-600 dark:text-[#B4B4C8] mt-1 line-clamp-2">
+                                {notif.message}
+                              </p>
+                              <div className="flex items-center justify-between mt-2">
+                                {notif.meta && (
+                                  <span className="text-[9px] text-brand-600 dark:text-brand-dark-accent font-bold bg-brand-50 dark:bg-brand-dark-accent/10 px-2 py-0.5 rounded lowercase italic">
+                                    {notif.meta}
+                                  </span>
+                                )}
+                                <span className="text-[8px] text-slate-400 dark:text-[#B4B4C8]/40 ml-auto">
+                                  {notif.createdAt ? new Date(notif.createdAt.toMillis()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                                </span>
+                              </div>
                             </div>
+                            {!notif.isRead && (
+                              <div className="absolute top-3 right-3 w-2 h-2 bg-brand-500 rounded-full shadow-lg shadow-brand-500/50"></div>
+                            )}
                           </div>
                         );
                       })
@@ -476,7 +547,7 @@ export default function DashboardLayout() {
         </header>
         <div className="flex-1 overflow-auto flex flex-col focus:outline-none relative">
           {/* Profile Completion Prompt */}
-          {profile && !profile.profileCompleted && (
+          {profile && !profile.profileCompleted && location.pathname !== '/profil' && (
             <div className="bg-brand-50/50 dark:bg-brand-dark-accent-light/5 border-b border-brand-200 dark:border-brand-dark-accent-light/20 px-4 md:px-8 py-3 flex items-center justify-between gap-4">
               <div className="flex items-center gap-3">
                 <div className="bg-brand-100 dark:bg-brand-dark-accent-light/10 p-2 rounded-full">

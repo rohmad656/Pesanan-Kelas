@@ -74,7 +74,7 @@ export default function ReportIssueModal({ isOpen, onClose, initialRoomId, initi
 
       await addDoc(collection(db, 'issues'), issueData);
 
-      // Create notification for admin/staff using unified targetRole
+      // Create notification for admin/staff
       try {
         await addDoc(collection(db, 'notifications'), {
           targetRole: 'admin',

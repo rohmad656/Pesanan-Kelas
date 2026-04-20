@@ -39,9 +39,9 @@ export default function AdminDashboard() {
     });
 
     // Listen to users count
-    const qUsers = query(collection(db, 'users'), where('deleted', '!=', true));
-    const unsubscribeUsers = onSnapshot(qUsers, (snapshot) => {
-      setTotalUsers(snapshot.size);
+    const unsubscribeUsers = onSnapshot(collection(db, 'users'), (snapshot) => {
+      const activeUsers = snapshot.docs.filter(doc => doc.data().deleted !== true);
+      setTotalUsers(activeUsers.length);
     }, (error) => {
       console.error("Error fetching users count:", error);
     });

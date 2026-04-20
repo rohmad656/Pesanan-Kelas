@@ -51,14 +51,15 @@ export default function Help() {
       try {
         const q = query(
           collection(db, 'users'), 
-          where('role', 'in', ['staff', 'admin']),
-          where('deleted', '!=', true)
+          where('role', 'in', ['staff', 'admin'])
         );
         const snapshot = await getDocs(q);
-        const staffData = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        }));
+        const staffData = snapshot.docs
+          .map(doc => ({
+            id: doc.id,
+            ...doc.data()
+          }))
+          .filter((user: any) => user.deleted !== true);
         setStaffDirectory(staffData);
       } catch (error) {
         handleFirestoreError(error, OperationType.GET, 'users');

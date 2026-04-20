@@ -217,10 +217,10 @@ service cloud.firestore {
       return hasOnlyAllowedFields(['userId', 'title', 'message', 'type', 'isRead', 'createdAt', 'meta', 'targetRole']) &&
              hasRequiredFields(['title', 'message', 'type', 'isRead', 'createdAt']) &&
              (!('userId' in data) || (data.userId is string && data.userId.size() > 0 && data.userId.size() < 128)) &&
-             (!('targetRole' in data) || (data.targetRole is string && data.targetRole in ['mahasiswa', 'dosen', 'admin'])) &&
+             (!('targetRole' in data) || (data.targetRole is string && data.targetRole in ['mahasiswa', 'dosen', 'admin', 'staff'])) &&
              data.title is string && data.title.size() > 0 && data.title.size() < 200 &&
              data.message is string && data.message.size() > 0 && data.message.size() < 1000 &&
-             data.type in ['reminder', 'approved', 'rejected', 'info', 'warning'] &&
+             data.type in ['reminder', 'approved', 'rejected', 'info', 'warning', 'booking', 'issue'] &&
              data.isRead is bool &&
              (!('meta' in data) || (data.meta is string && data.meta.size() < 500)) &&
              data.createdAt is timestamp;

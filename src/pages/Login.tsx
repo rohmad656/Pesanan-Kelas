@@ -75,14 +75,14 @@ export default function Login() {
   }, [isVisible]);
 
   const getIdentifierLabel = () => {
-    if (isForgotPassword && resetStep === 'EMAIL') return "Email Akun";
+    if (isForgotPassword && resetStep === 'EMAIL') return "Email atau NIM Akun";
     if (role === 'mahasiswa') return 'Email atau NIM';
     if (role === 'dosen') return 'Email atau NIP';
     return 'ID Staf atau Email';
   };
 
   const getIdentifierPlaceholder = () => {
-    if (isForgotPassword && resetStep === 'EMAIL') return "Masukkan Email Anda";
+    if (isForgotPassword && resetStep === 'EMAIL') return "Masukkan Email atau NIM Anda";
     if (role === 'mahasiswa') return 'mhs@kampus.ac.id / 123456';
     if (role === 'dosen') return 'dosen@kampus.ac.id / 987654';
     return 'admin@kampus.ac.id / STF001';
@@ -129,9 +129,14 @@ export default function Login() {
             setLoading(false);
             return;
           }
-          const res = await sendOTPReset(nim);
+          const res = (await sendOTPReset(nim)) as any;
           if (res.success) {
             toast.success(res.message);
+            // If backend resolved a NIM to an email, we switch to that email for next steps
+            if (res.resolvedEmail && res.resolvedEmail !== nim) {
+              console.log("Switching to resolved email:", res.resolvedEmail);
+              setNim(res.resolvedEmail);
+            }
             setResetStep('CODE');
           } else {
             setError(res.message || 'Gagal mengirim kode OTP.');

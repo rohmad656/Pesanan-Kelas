@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { collection, query, onSnapshot, doc, updateDoc, writeBatch, serverTimestamp, orderBy, limit, where } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../lib/firebase';
 import { AlertTriangle, CheckCircle, Clock, ShieldCheck, User } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 export default function AuditReports() {
   const [issues, setIssues] = useState<any[]>([]);
@@ -74,15 +75,17 @@ export default function AuditReports() {
       if (issue.userId) {
         batch.set(doc(collection(db, 'notifications')), {
           userId: issue.userId,
-          title: 'Laporan Selesai',
-          message: `Laporan Anda untuk ruangan ${issue.roomId} telah diselesaikan.`,
+          title: '✅ Laporan Selesai Diperbaiki',
+          message: `Laporan kerusakan di ${issue.roomName || issue.roomId} telah diselesaikan oleh admin. Terima kasih!`,
           type: 'approved',
           isRead: false,
-          createdAt: serverTimestamp()
+          createdAt: serverTimestamp(),
+          meta: '/laporan'
         });
       }
       
       await batch.commit();
+      toast.success('Laporan berhasil diselesaikan');
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `issues/${issue.id}`);
     }

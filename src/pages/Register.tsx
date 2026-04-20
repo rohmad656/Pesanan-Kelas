@@ -43,7 +43,7 @@ export default function Register() {
         const { getDocs, collection, query, where } = await import('firebase/firestore');
         const { db } = await import('../lib/firebase');
         
-        const q = query(collection(db, 'users'), where('nim', '==', identifier), where('deleted', '!=', true));
+        const q = query(collection(db, 'users'), where('nim', '==', identifier));
         const snap = await getDocs(q);
         
         if (!snap.empty) {

@@ -156,7 +156,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         // Unify staff/admin check for 'admin' portal
         const isStaffAdminMismatch = (intendedRole === 'admin' && (userData.role === 'admin' || userData.role === 'staff'));
         if (!isStaffAdminMismatch) {
-          toast.error(`Anda terdaftar sebagai ${userData.role.toUpperCase()}. Mengarahkan ke Dashboard yang sesuai...`);
+          toast.error(`Akses Ditolak: Anda terdaftar sebagai ${userData.role.toUpperCase()}. Gunakan portal yang sesuai atau hubungi Admin untuk perubahan peran.`);
           // Note: App.tsx will handle the actual redirection based on profile.role
         }
       }
@@ -192,7 +192,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (res.ok) {
           const data = await res.json();
           if (!data.available) {
-            const error: any = new Error(`NIM/NIP ${emailOrId} sudah terdaftar. Silakan masuk menggunakan email terkait.`);
+            const error: any = new Error(`NIM/NIP ${emailOrId} sudah terdaftar. Silakan gunakan fitur Login atau hubungi Admin jika terdapat ketidaksesuaian data.`);
             error.code = 'custom/nim-already-in-use';
             throw error;
           }
@@ -202,7 +202,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.warn("NIM availability check failed, proceeding to Auth (Auth will catch existing email):", e);
       }
     } else {
-      // If email provided, we'll let Firebase Auth handle the existence check
+      // Check if Email already exists via backend API
+      try {
+        const res = await fetch(`/api/auth/check-email?email=${encodeURIComponent(emailOrId)}`);
+        if (res.ok) {
+          const checkData = await res.json();
+          if (!checkData.available) {
+            const error: any = new Error(`Email ${emailOrId} sudah terdaftar sebagai ${checkData.role?.toUpperCase()}. Silakan Login menggunakan portal ${checkData.role?.toUpperCase()}, atau hubungi Admin jika Anda ingin mengajukan perubahan peran.`);
+            error.code = 'custom/email-already-in-use';
+            throw error;
+          }
+        }
+      } catch (e: any) {
+        if (e.code === 'custom/email-already-in-use') throw e;
+        console.warn("Email availability check failed, proceeding to Auth:", e);
+      }
     }
 
     const email = formatEmail(emailOrId);
@@ -418,7 +432,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       const data = await response.json();
-      return { success: data.success, message: data.message };
+      return { success: data.success, message: data.message, resolvedEmail: data.resolvedEmail };
     } catch (error: any) {
       console.error("OTP Request failed:", error);
       return { success: false, message: "Koneksi ke server gagal. Pastikan API Auth sudah aktif." };
@@ -540,7 +554,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (intendedRole && userData.role !== intendedRole) {
           const isStaffAdminMismatch = (intendedRole === 'admin' && (userData.role === 'admin' || userData.role === 'staff'));
           if (!isStaffAdminMismatch) {
-            toast.error(`Anda terdaftar sebagai ${userData.role.toUpperCase()}. Mengarahkan ke Dashboard yang sesuai...`);
+            toast.error(`Akses Ditolak: Anda terdaftar sebagai ${userData.role.toUpperCase()}. Gunakan portal yang sesuai atau hubungi Admin untuk perubahan peran.`);
           }
         } else {
           toast.success('Login berhasil!');

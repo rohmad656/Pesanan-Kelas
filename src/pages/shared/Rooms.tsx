@@ -7,9 +7,10 @@ import { Search, Filter, MapPin, Users, CheckCircle, XCircle, Building, Info, Lo
 import { cn } from '../../lib/utils';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
-import { motion, AnimatePresence } from 'motion/react';
+import { AnimatePresence, motion } from 'motion/react';
 import ReportIssueModal from '../../components/ReportIssueModal';
 import BaseModal from '../../components/BaseModal';
+import { UI_STRINGS } from '../../constants/ui-strings';
 
 export default function Rooms() {
   const { profile } = useAuth();
@@ -224,11 +225,12 @@ export default function Rooms() {
         const notificationRef = doc(collection(db, 'notifications'));
         transaction.set(notificationRef, {
           targetRole: 'admin',
-          title: 'Pemesanan Baru',
+          title: '📅 Pemesanan Baru',
           message: `${profile.name} mengajukan peminjaman ${selectedRoom.name}.`,
-          type: 'info',
+          type: 'booking',
           isRead: false,
-          createdAt: serverTimestamp()
+          createdAt: serverTimestamp(),
+          meta: '/dashboard' // In Admin portal, Dashboard is the verification page
         });
 
         // 4. Update room to trigger transaction collision for other concurrent bookings
@@ -253,6 +255,8 @@ export default function Rooms() {
       setIsBooking(false);
     }
   };
+
+  const t = UI_STRINGS;
 
   if (loadingRooms) {
     return (
@@ -289,8 +293,8 @@ export default function Rooms() {
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-[#F5F5F5]">Cari Ruangan</h1>
-          <p className="text-slate-600 dark:text-[#B4B4C8] text-sm">Temukan dan pesan ruangan untuk kegiatan Anda.</p>
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-[#F5F5F5]">{t.rooms.header_title}</h1>
+          <p className="text-slate-600 dark:text-[#B4B4C8] text-sm">{t.rooms.header_desc}</p>
         </div>
         
         <div className="flex items-center gap-2">
@@ -298,7 +302,7 @@ export default function Rooms() {
             <Search className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-600 dark:text-[#B4B4C8]" />
             <input 
               type="text"
-              placeholder="Cari nama atau gedung..."
+              placeholder={t.rooms.search_placeholder}
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="pl-10 pr-4 py-2 bg-white dark:bg-[#27273A] dark:shadow-lg dark:shadow-black/20 border border-slate-200 dark:border-[#3F3F5A]/50 rounded-xl text-slate-900 dark:text-[#F5F5F5] placeholder:text-slate-600 dark:text-[#B4B4C8]/50 focus:outline-none focus:border-brand-400 dark:border-brand-dark-accent focus:ring-1 focus:ring-brand-dark-accent-light transition-all w-full md:w-64"
@@ -315,15 +319,14 @@ export default function Rooms() {
             onChange={(e) => setSortBy(e.target.value)}
             className="p-2 bg-white dark:bg-[#27273A] dark:shadow-lg dark:shadow-black/20 border border-slate-200 dark:border-[#3F3F5A]/50 rounded-xl text-slate-900 dark:text-[#F5F5F5] focus:outline-none focus:border-brand-400 dark:border-brand-dark-accent focus:ring-1 focus:ring-brand-dark-accent-light transition-all"
           >
-            <option value="name">Nama (A-Z)</option>
-            <option value="location">Lokasi</option>
-            <option value="capacity-asc">Kapasitas (Kecil-Besar)</option>
-            <option value="capacity-desc">Kapasitas (Besar-Kecil)</option>
+            <option value="name">{t.rooms.sort_name}</option>
+            <option value="location">{t.rooms.sort_location}</option>
+            <option value="capacity-asc">{t.rooms.sort_cap_asc}</option>
+            <option value="capacity-desc">{t.rooms.sort_cap_desc}</option>
           </select>
         </div>
       </div>
 
-      {/* Filter Panel */}
       <AnimatePresence>
         {showFilters && (
           <motion.div
@@ -334,7 +337,7 @@ export default function Rooms() {
           >
             <div className="p-4 bg-white dark:bg-[#27273A] dark:shadow-lg dark:shadow-black/20 border border-slate-200 dark:border-[#3F3F5A]/50 rounded-xl grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="space-y-1.5">
-                <label className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-[#B4B4C8]">Kapasitas Min.</label>
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-[#B4B4C8]">{t.rooms.filter_min_cap}</label>
                 <input
                   type="number"
                   value={filterCapacity}
@@ -344,7 +347,7 @@ export default function Rooms() {
                 />
               </div>
               <div className="space-y-1.5">
-                <label className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-[#B4B4C8]">Lantai</label>
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-[#B4B4C8]">{t.rooms.filter_floor}</label>
                 <input
                   type="number"
                   value={filterFloor}
@@ -354,7 +357,7 @@ export default function Rooms() {
                 />
               </div>
               <div className="space-y-1.5">
-                <label className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-[#B4B4C8]">Fasilitas</label>
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-[#B4B4C8]">{t.rooms.filter_facility}</label>
                 <input
                   type="text"
                   value={filterFacility}
@@ -395,7 +398,7 @@ export default function Rooms() {
                   <span className={`px-3 py-1 rounded-full text-xs font-bold ${
                     room.status === 'available' ? 'bg-green-500/20 text-green-400 border border-green-500/30' : 'bg-red-500/20 text-red-400 border border-red-500/30'
                   }`}>
-                    {room.status === 'available' ? 'Tersedia' : 'Perbaikan'}
+                    {room.status === 'available' ? t.common.available : t.common.broken}
                   </span>
                 </div>
               </div>
@@ -403,12 +406,12 @@ export default function Rooms() {
               <div className="p-5 flex-1 flex flex-col">
                 <h3 className="text-xl font-bold text-slate-900 dark:text-[#F5F5F5] mb-1">{room.name}</h3>
                 <div className="flex items-center gap-4 text-sm text-slate-600 dark:text-[#B4B4C8] mb-4">
-                  <span className="flex items-center gap-1"><MapPin className="w-4 h-4" /> {room.building} Lt. {room.floor}</span>
+                  <span className="flex items-center gap-1"><MapPin className="w-4 h-4" /> {room.building} {t.common.floor} {room.floor}</span>
                   <span className="flex items-center gap-1"><Users className="w-4 h-4" /> {room.capacity} Org</span>
                 </div>
                 
                 <div className="mb-4 flex-1">
-                  <p className="text-xs text-slate-600 dark:text-[#B4B4C8] font-medium mb-2 uppercase tracking-wider">Fasilitas:</p>
+                  <p className="text-xs text-slate-600 dark:text-[#B4B4C8] font-medium mb-2 uppercase tracking-wider">{t.common.facilities}:</p>
                   <div className="flex flex-wrap gap-2">
                     {room.facilities?.map((fas: string, idx: number) => (
                       <span key={idx} className="px-2 py-1 bg-brand-100 dark:bg-[#32324A] rounded-md text-xs text-brand-700 dark:text-brand-dark-accent">
@@ -423,14 +426,14 @@ export default function Rooms() {
                     onClick={() => setInfoRoom(room)}
                     className="flex-1 py-2.5 bg-brand-100 dark:bg-[#32324A] text-brand-700 dark:text-brand-dark-accent font-bold rounded-xl hover:bg-brand-dark-hover hover:scale-[1.02] active:scale-[0.98] transition-all text-sm"
                   >
-                    Info Lebih Lanjut
+                    {t.common.more_info}
                   </button>
                   <button 
                     onClick={() => setSelectedRoom(room)}
                     disabled={room.status !== 'available'}
                     className="flex-1 py-2.5 bg-brand-dark-accent-light text-brand-dark-on-accent font-bold rounded-xl hover:bg-brand-dark-accent-hover hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 text-sm"
                   >
-                    Pesan
+                    {t.common.book}
                   </button>
                 </div>
               </div>
@@ -441,16 +444,15 @@ export default function Rooms() {
         {filteredRooms.length === 0 && (
           <div className="col-span-full py-12 text-center text-slate-600 dark:text-[#B4B4C8] bg-white dark:bg-[#27273A] dark:shadow-lg dark:shadow-black/20 rounded-2xl border border-slate-200 dark:border-[#3F3F5A]/30">
             <Search className="w-12 h-12 mx-auto mb-3 opacity-20" />
-            <p>Tidak ada ruangan yang ditemukan.</p>
+            <p>{t.rooms.not_found}</p>
           </div>
         )}
       </motion.div>
 
-      {/* Info Modal */}
       <BaseModal
         isOpen={!!infoRoom}
         onClose={() => setInfoRoom(null)}
-        title={infoRoom ? `Detail ${infoRoom.name}` : ''}
+        title={infoRoom ? `${t.rooms.detail_title} ${infoRoom.name}` : ''}
         className="max-w-lg"
       >
         {infoRoom && (
@@ -467,7 +469,7 @@ export default function Rooms() {
               <span className={`px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase ${
                 infoRoom.status === 'available' ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'
               }`}>
-                Status: {infoRoom.status === 'available' ? 'Tersedia' : 'Perbaikan'}
+                {t.common.status}: {infoRoom.status === 'available' ? t.common.available : t.common.broken}
               </span>
               <button 
                 onClick={() => {
@@ -477,23 +479,23 @@ export default function Rooms() {
                 className="flex items-center gap-1 text-[10px] font-bold text-red-400 hover:text-red-300 transition-colors ml-auto"
               >
                 <AlertTriangle className="w-3 h-3" />
-                Laporkan Masalah
+                {t.rooms.report_issue}
               </button>
             </div>
 
             <div className="grid grid-cols-2 gap-4 text-sm text-slate-600 dark:text-[#B4B4C8]">
               <div>
-                <span className="block text-xs font-bold uppercase tracking-wider mb-1">Gedung / Lantai</span>
-                <span className="text-slate-900 dark:text-[#F5F5F5] text-base">{infoRoom.building} Lt. {infoRoom.floor}</span>
+                <span className="block text-xs font-bold uppercase tracking-wider mb-1">{t.common.building} / {t.common.floor}</span>
+                <span className="text-slate-900 dark:text-[#F5F5F5] text-base">{infoRoom.building} {t.common.floor} {infoRoom.floor}</span>
               </div>
               <div>
-                <span className="block text-xs font-bold uppercase tracking-wider mb-1">Kapasitas</span>
+                <span className="block text-xs font-bold uppercase tracking-wider mb-1">{t.common.capacity}</span>
                 <span className="text-slate-900 dark:text-[#F5F5F5] text-base">{infoRoom.capacity} Orang</span>
               </div>
             </div>
 
             <div>
-              <span className="block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-[#B4B4C8] mb-2">Fasilitas</span>
+              <span className="block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-[#B4B4C8] mb-2">{t.common.facilities}</span>
               <div className="flex flex-wrap gap-2">
                 {infoRoom.facilities?.map((fas: string, idx: number) => (
                   <span key={idx} className="px-3 py-1.5 bg-brand-100 dark:bg-[#32324A] rounded-lg text-sm text-brand-700 dark:text-brand-dark-accent">
@@ -501,14 +503,14 @@ export default function Rooms() {
                   </span>
                 ))}
                 {(!infoRoom.facilities || infoRoom.facilities.length === 0) && (
-                  <span className="text-sm text-slate-600 dark:text-[#B4B4C8]">Tidak ada data fasilitas.</span>
+                  <span className="text-sm text-slate-600 dark:text-[#B4B4C8]">{t.rooms.empty_facilities}</span>
                 )}
               </div>
             </div>
 
             {infoRoom.rules && (
               <div>
-                <span className="block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-[#B4B4C8] mb-2">Peraturan Ruangan</span>
+                <span className="block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-[#B4B4C8] mb-2">{t.rooms.rules_title}</span>
                 <div className="p-4 bg-brand-100 dark:bg-[#32324A]/50 border border-brand-300 dark:border-brand-dark-accent/30 rounded-xl flex gap-3 items-start">
                   <Info className="w-5 h-5 text-brand-700 dark:text-brand-dark-accent shrink-0 mt-0.5" />
                   <p className="text-sm text-slate-600 dark:text-[#B4B4C8] whitespace-pre-wrap">{infoRoom.rules}</p>
@@ -525,18 +527,17 @@ export default function Rooms() {
                 disabled={infoRoom.status !== 'available'}
                 className="w-full py-3.5 bg-brand-700 text-white font-bold rounded-2xl hover:bg-brand-dark-hover shadow-lg shadow-brand-700/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Pesan Ruangan Ini
+                {t.rooms.book_now}
               </button>
             </div>
           </div>
         )}
       </BaseModal>
 
-      {/* Booking Modal */}
       <BaseModal
         isOpen={!!selectedRoom}
         onClose={() => setSelectedRoom(null)}
-        title={selectedRoom ? `Pesan ${selectedRoom.name}` : ''}
+        title={selectedRoom ? `${t.booking.modal_title} ${selectedRoom.name}` : ''}
         className="max-w-lg"
       >
         {selectedRoom && (
@@ -545,7 +546,7 @@ export default function Rooms() {
               <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl flex items-start gap-3">
                 <AlertTriangle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
                 <p className="text-xs text-red-600 dark:text-red-400 font-medium">
-                  Profil Anda belum lengkap. Silakan lengkapi data diri di halaman Profil agar dapat mengajukan pemesanan.
+                  {t.profile.incomplete_warning}
                 </p>
               </div>
             )}
@@ -554,7 +555,7 @@ export default function Rooms() {
               <div className="p-4 bg-brand-50 dark:bg-[#32324A]/50 border border-brand-200 dark:border-brand-dark-accent/30 rounded-xl flex gap-3 items-start">
                 <Info className="w-5 h-5 text-brand-700 dark:text-brand-dark-accent shrink-0 mt-0.5" />
                 <div>
-                  <h4 className="text-sm font-bold text-brand-700 dark:text-brand-dark-accent mb-1">Peraturan Ruangan</h4>
+                  <h4 className="text-sm font-bold text-brand-700 dark:text-brand-dark-accent mb-1">{t.rooms.rules_title}</h4>
                   <p className="text-sm text-slate-600 dark:text-[#B4B4C8] whitespace-pre-wrap">{selectedRoom.rules}</p>
                 </div>
               </div>
@@ -562,7 +563,7 @@ export default function Rooms() {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <label className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-[#B4B4C8]">Pilih Tanggal</label>
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-[#B4B4C8]">{t.booking.select_date}</label>
                 <input 
                   type="date" required min={format(new Date(), 'yyyy-MM-dd')}
                   value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)}
@@ -571,7 +572,7 @@ export default function Rooms() {
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-[#B4B4C8]">Jumlah SKS</label>
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-[#B4B4C8]">{t.booking.select_sks}</label>
                 <div className="flex gap-2 h-[46px]">
                   {[2, 3].map((sks) => (
                     <button
@@ -592,7 +593,7 @@ export default function Rooms() {
             </div>
 
             <div className="space-y-2">
-              <label className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-[#B4B4C8]">Pilih Slot Waktu</label>
+              <label className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-[#B4B4C8]">{t.booking.select_slot}</label>
               <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 max-h-48 overflow-y-auto p-1 custom-scrollbar">
                 {generateSlots().map((slot) => {
                   const isConflict = checkSlotConflict(slot.start, slot.end);
@@ -617,27 +618,29 @@ export default function Rooms() {
               </div>
             </div>
 
-            {selectedDate && selectedSlot && (
-              <div className="p-4 bg-slate-50 dark:bg-[#32324A]/30 border border-slate-200 dark:border-[#3F3F5A]/30 rounded-2xl">
-                <div className="flex items-center gap-2 text-sm">
-                  {isCheckingAvailability ? (
-                    <div className="flex items-center gap-2 text-slate-400 font-medium animate-pulse">
-                      <Clock className="w-4 h-4" /> Memeriksa ketersediaan...
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-2 text-green-500 dark:text-green-400 font-bold">
-                      <CheckCircle className="w-4 h-4" /> Slot tersedia untuk dipesan.
-                    </div>
-                  )}
+            <div className="grid grid-cols-1 gap-2">
+              {selectedDate && selectedSlot && (
+                <div className="p-4 bg-slate-50 dark:bg-[#32324A]/30 border border-slate-200 dark:border-[#3F3F5A]/30 rounded-2xl">
+                  <div className="flex items-center gap-2 text-sm">
+                    {isCheckingAvailability ? (
+                      <div className="flex items-center gap-2 text-slate-400 font-medium animate-pulse">
+                        <Clock className="w-4 h-4" /> {t.booking.checking_availability}
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2 text-green-500 dark:text-green-400 font-bold">
+                        <CheckCircle className="w-4 h-4" /> {t.booking.slot_available}
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-[#B4B4C8]">Alasan Pemesanan</label>
+              <label className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-[#B4B4C8]">{t.booking.reason_label}</label>
               <textarea 
                 required rows={3} value={bookingReason} onChange={(e) => setBookingReason(e.target.value)}
-                placeholder="Contoh: Kelas pengganti mata kuliah RPL..."
+                placeholder={t.booking.reason_placeholder}
                 className="w-full px-4 py-3 bg-slate-50 dark:bg-[#32324A] border border-slate-200 dark:border-[#3F3F5A]/50 rounded-2xl text-slate-900 dark:text-[#F5F5F5] placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-brand-500 transition-all resize-none"
               ></textarea>
             </div>
@@ -647,21 +650,20 @@ export default function Rooms() {
                 type="button" onClick={() => setSelectedRoom(null)}
                 className="flex-1 py-3.5 bg-slate-100 dark:bg-[#32324A] text-slate-600 dark:text-[#B4B4C8] font-bold rounded-2xl hover:bg-slate-200 dark:hover:bg-[#3F3F5A] transition-all"
               >
-                Batal
+                {t.common.cancel}
               </button>
               <button 
                 type="submit"
                 disabled={isBooking || (!profile?.profileCompleted && profile?.role !== 'admin')}
                 className="flex-1 py-3.5 bg-brand-700 text-white font-bold rounded-2xl hover:bg-brand-dark-hover shadow-lg shadow-brand-700/20 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
               >
-                {isBooking ? <><Loader2 className="w-5 h-5 animate-spin" /> Memproses...</> : 'Ajukan Pesanan'}
+                {isBooking ? <><Loader2 className="w-5 h-5 animate-spin" /> {t.common.processing}</> : t.booking.submit_request}
               </button>
             </div>
           </form>
         )}
       </BaseModal>
 
-      {/* Success Modal */}
       <BaseModal
         isOpen={showSuccessModal}
         onClose={() => setShowSuccessModal(false)}
@@ -673,14 +675,14 @@ export default function Rooms() {
             <CheckCircle className="w-10 h-10 text-green-500" />
           </div>
           <div>
-            <h3 className="text-2xl font-bold text-slate-900 dark:text-[#F5F5F5] mb-2">Booking Berhasil!</h3>
-            <p className="text-slate-600 dark:text-[#B4B4C8]">Pesanan Anda telah diajukan dan sedang menunggu verifikasi admin.</p>
+            <h3 className="text-2xl font-bold text-slate-900 dark:text-[#F5F5F5] mb-2">{t.booking.success_title}</h3>
+            <p className="text-slate-600 dark:text-[#B4B4C8]">{t.booking.success_desc}</p>
           </div>
           <button 
             onClick={() => setShowSuccessModal(false)}
             className="w-full py-3 bg-brand-700 text-white font-bold rounded-2xl hover:bg-brand-dark-hover transition-all"
           >
-            Sip, Mengerti
+            {t.common.understand}
           </button>
         </div>
       </BaseModal>

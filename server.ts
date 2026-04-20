@@ -88,14 +88,26 @@ const getDb = () => {
 // Email Helper Logic
 async function sendMail({ to, subject, html, templateParams }: { to: string, subject: string, html: string, templateParams?: Record<string, any> }) {
   // Support both standard and VITE_ prefixed env variables for server flexibility
-  const serviceId = process.env.EMAILJS_SERVICE_ID || process.env.VITE_EMAILJS_SERVICE_ID;
-  const templateId = process.env.EMAILJS_TEMPLATE_ID || process.env.VITE_EMAILJS_TEMPLATE_ID;
-  const publicKey = process.env.EMAILJS_PUBLIC_KEY || process.env.VITE_EMAILJS_PUBLIC_KEY;
-  const privateKey = process.env.EMAILJS_PRIVATE_KEY || process.env.VITE_EMAILJS_PRIVATE_KEY;
+  // Trim values to prevent issues with accidental spaces in Secrets panel
+  const serviceId = (process.env.EMAILJS_SERVICE_ID || process.env.VITE_EMAILJS_SERVICE_ID || '').trim();
+  const templateId = (process.env.EMAILJS_TEMPLATE_ID || process.env.VITE_EMAILJS_TEMPLATE_ID || '').trim();
+  const publicKey = (process.env.EMAILJS_PUBLIC_KEY || process.env.VITE_EMAILJS_PUBLIC_KEY || '').trim();
+  const privateKey = (process.env.EMAILJS_PRIVATE_KEY || process.env.VITE_EMAILJS_PRIVATE_KEY || '').trim();
   
-  const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS } = process.env;
+  const SMTP_HOST = (process.env.SMTP_HOST || '').trim();
+  const SMTP_PORT = (process.env.SMTP_PORT || '').trim();
+  const SMTP_USER = (process.env.SMTP_USER || '').trim();
+  const SMTP_PASS = (process.env.SMTP_PASS || '').trim();
 
-  console.log(`[DEBUG] Attempting to send email to ${to}...`);
+  const cleanTo = (to || '').trim();
+  console.log(`[DEBUG] Attempting to send email to "${cleanTo}"...`);
+
+  // Basic Email Validation
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!cleanTo || !emailRegex.test(cleanTo)) {
+    console.error(`[ERROR] Invalid recipient email address: "${cleanTo}"`);
+    throw new Error(`INVALID_RECIPIENT: "${cleanTo}" is not a valid email address.`);
+  }
 
   // 1. Priority: EmailJS REST API (If configured)
   if (serviceId && templateId && publicKey) {
@@ -108,18 +120,21 @@ async function sendMail({ to, subject, html, templateParams }: { to: string, sub
           service_id: serviceId,
           template_id: templateId,
           user_id: publicKey,
-          accessToken: privateKey,
+          accessToken: privateKey || undefined,
           template_params: {
-            to_email: to,
+            // Provide multiple aliases for template flexibility
+            to_email: cleanTo,
+            email: cleanTo,
+            recipient: cleanTo,
             subject: subject,
-            message: html.replace(/<[^>]*>?/gm, ''),
+            message: html.replace(/<[^>]*>?/gm, ''), // Plain text version for {{message}}
             ...templateParams
           }
         })
       });
 
       if (response.ok) {
-        console.log(`[DEBUG] EmailJS sent successfully to ${to}`);
+        console.log(`[DEBUG] EmailJS sent successfully to ${cleanTo}`);
         return { messageId: 'emailjs-success' };
       } else {
         const errorText = await response.text();
@@ -127,12 +142,9 @@ async function sendMail({ to, subject, html, templateParams }: { to: string, sub
         console.error("EmailJS API Error Detail:", errorText);
         
         if (response.status === 403 && errorText.includes("Private Key")) {
-          throw new Error("EMAILJS_CONFIG_ERROR: 'Strict Mode' aktif di EmailJS. Silakan masukkan Private Key di panel Secrets.");
+          console.warn("EmailJS CONFIG Warning: Strict Mode requires Private Key.");
         }
-        if (response.status === 403 && errorText.includes("non-browser environments")) {
-          throw new Error("EMAILJS_CONFIG_ERROR: Aktifkan 'Allow API access from non-browser environments' di Dashboard EmailJS > Account > Security.");
-        }
-        // Fallthrough to SMTP if EmailJS fails explicitly
+        // Fallthrough to SMTP if EmailJS fails
       }
     } catch (e: any) {
       console.error("EmailJS fetch failed execution:", e.message);
@@ -141,27 +153,39 @@ async function sendMail({ to, subject, html, templateParams }: { to: string, sub
 
   // 2. Secondary: SMTP Logic (Nodemailer)
   if (SMTP_HOST && SMTP_USER && SMTP_PASS) {
-    const transporter = nodemailer.createTransport({
-      host: SMTP_HOST,
-      port: Number(SMTP_PORT) || 587,
-      secure: Number(SMTP_PORT) === 465,
-      auth: {
-        user: SMTP_USER,
-        pass: SMTP_PASS,
-      },
-    });
+    try {
+      const transporter = nodemailer.createTransport({
+        host: SMTP_HOST,
+        port: Number(SMTP_PORT) || 587,
+        secure: Number(SMTP_PORT) === 465,
+        auth: {
+          user: SMTP_USER,
+          pass: SMTP_PASS,
+        },
+      });
 
-    return await transporter.sendMail({
-      from: `"${process.env.SMTP_FROM_NAME || 'Portal Kampus'}" <${process.env.SMTP_FROM_EMAIL || SMTP_USER}>`,
-      to,
-      subject,
-      text: html.replace(/<[^>]*>?/gm, ''), // Fallback text for old clients
-      html,
-    });
+      return await transporter.sendMail({
+        from: `"${process.env.SMTP_FROM_NAME || 'Portal Kampus'}" <${process.env.SMTP_FROM_EMAIL || SMTP_USER}>`,
+        to: cleanTo,
+        subject,
+        text: html.replace(/<[^>]*>?/gm, ''), // Fallback text for old clients
+        html,
+      });
+    } catch (smtpError: any) {
+      console.error("Nodemailer SMTP Error:", smtpError.message);
+      if (smtpError.message.includes("535-5.7.8") || smtpError.message.includes("Username and Password not accepted")) {
+        let hint = "Username atau Password SMTP salah.";
+        if (SMTP_HOST.includes("gmail.com")) {
+          hint += " Karena Anda menggunakan Gmail, Anda HARUS menggunakan 'App Password' (16 karakter), bukan password akun Google biasa. Aktifkan 2-Step Verification terlebih dahulu.";
+        }
+        throw new Error(`SMTP_AUTH_FAILED: ${hint}`);
+      }
+      throw smtpError;
+    }
   } else {
     // Fallback/Simulation Log
-    console.log(`[SMTP SIMULATION] Logic is ready. Configure SMTP environment variables to send for real.`);
-    console.log(`[SMTP EMAIL] To: ${to} | Subject: ${subject} | Body Excerpt: ${html.substring(0, 100)}...`);
+    console.log(`[SMTP SIMULATION] Final Fallback reached. No valid configuration for EmailJS or SMTP.`);
+    console.log(`[SMTP EMAIL] To: ${cleanTo} | Subject: ${subject} | Body Excerpt: ${html.substring(0, 100)}...`);
     return { messageId: 'simulated-id' };
   }
 }
@@ -197,7 +221,10 @@ async function startServer() {
       const targetUserDoc = await db.collection("users").doc(uid).get();
       const targetUserData = targetUserDoc.data();
 
-      // Delete from Auth
+      // Nuclear Hard Delete: Remove from Auth and ALL potential Firestore docs with this identity
+      const targetEmail = targetUserData?.email;
+      
+      // 1. Delete from Auth
       try {
         await admin.auth().deleteUser(uid);
       } catch (authError: any) {
@@ -205,17 +232,35 @@ async function startServer() {
         if (authError.code !== 'auth/user-not-found') throw authError;
       }
 
-      // Hard delete in Firestore as requested
-      await db.collection("users").doc(uid).delete();
+      // 2. Batch delete all associated Firestore records
+      const batch = db.batch();
+      
+      // Delete the primary document by UID
+      batch.delete(db.collection("users").doc(uid));
+
+      // If we have an email, find and delete any other documents that might be using it (duplicates/orphans)
+      if (targetEmail) {
+        const dupesSnap = await db.collection("users").where("email", "==", targetEmail).get();
+        dupesSnap.docs.forEach(dupeDoc => {
+          if (dupeDoc.id !== uid) {
+            batch.delete(dupeDoc.ref);
+          }
+        });
+
+        // Clean up role_mappings
+        batch.delete(db.collection("role_mappings").doc(targetEmail));
+      }
+
+      await batch.commit();
 
       // Log the action (Audit log is kept even if profile is gone)
       await db.collection("audit_logs").add({
-        action: "DELETE_USER_HARD",
+        action: "DELETE_USER_NUCLEAR",
         targetUid: uid,
-        targetEmail: targetUserData?.email || "Unknown",
+        targetEmail: targetEmail || "Unknown",
         performedBy: decodedToken.uid,
         timestamp: admin.firestore.FieldValue.serverTimestamp(),
-        details: `Account ${targetUserData?.email || uid} permanently deleted from Auth & Firestore by ${userData.role} ${decodedToken.uid}`
+        details: `Account ${targetEmail || uid} (Prev Role: ${targetUserData?.role || 'Unknown'}) permanently PURGED from Auth and Firestore by ${userData.role} ${decodedToken.uid}`
       });
 
       // Simulation of email notice (Optional)
@@ -252,32 +297,39 @@ async function startServer() {
       const authUsers = authUsersResult.users;
 
       // 2. Fetch from Firestore
-      const usersSnap = await db.collection("users").where("deleted", "!=", true).get();
+      const usersSnap = await db.collection("users").get();
       const firestoreUsersMap: Record<string, any> = {};
       usersSnap.docs.forEach(doc => {
         firestoreUsersMap[doc.id] = doc.data();
       });
 
-      // 3. Merge
-      const mergedUsers = authUsers
-        .filter(u => !firestoreUsersMap[u.uid]?.deleted) // Skip soft-deleted
-        .map(u => {
-          const profile = firestoreUsersMap[u.uid] || {};
-          return {
-            id: u.uid,
-            uid: u.uid,
-            email: u.email,
-            name: profile.name || u.displayName || 'No Name',
-            role: profile.role || u.customClaims?.role || 'mahasiswa',
-            photoURL: profile.photoURL || u.photoURL,
-            lastLogin: u.metadata.lastSignInTime,
-            createdAt: profile.createdAt || u.metadata.creationTime,
-            nim: profile.nim,
-            whatsappNumber: profile.whatsappNumber || profile.whatsapp,
-            division: profile.division,
-            profileCompleted: profile.profileCompleted || false
-          };
-        });
+      // 3. Smart Merge: Union of both sources (Auth & Firestore)
+      // Base set of all unique UIDs recorded in either system
+      const allUids = new Set([
+        ...authUsers.map(u => u.uid),
+        ...Object.keys(firestoreUsersMap)
+      ]);
+
+      const mergedUsers = Array.from(allUids).map(uid => {
+        const u = authUsers.find(au => au.uid === uid);
+        const profile = firestoreUsersMap[uid] || {};
+        
+        return {
+          id: uid,
+          uid: uid,
+          email: profile.email || u?.email || "No Email",
+          name: profile.name || u?.displayName || "No Name",
+          role: profile.role || (u as any)?.customClaims?.role || "mahasiswa",
+          photoURL: profile.photoURL || u?.photoURL || "",
+          lastLogin: u?.metadata.lastSignInTime || profile.lastLogin || null,
+          createdAt: profile.createdAt || u?.metadata.creationTime || null,
+          nim: profile.nim || "",
+          whatsappNumber: profile.whatsappNumber || profile.whatsapp || "",
+          division: profile.division || "",
+          profileCompleted: profile.profileCompleted || false,
+          isOrphan: !u // Extra flag for UI visibility
+        };
+      });
 
       res.json({ users: mergedUsers });
     } catch (error: any) {
@@ -304,6 +356,10 @@ async function startServer() {
         return res.status(403).json({ error: "Only admins can change roles" });
       }
 
+      // Get old data for audit
+      const targetDoc = await db.collection("users").doc(targetUid).get();
+      const oldRole = targetDoc.data()?.role || "Unknown";
+
       // Update Firestore
       await db.collection("users").doc(targetUid).update({
         role: newRole,
@@ -319,7 +375,7 @@ async function startServer() {
         targetUid,
         performedBy: decodedToken.uid,
         timestamp: admin.firestore.FieldValue.serverTimestamp(),
-        details: `Role updated to ${newRole} for user ${targetUid}`
+        details: `Role updated from ${oldRole} to ${newRole} for user ${targetUid}`
       });
 
       res.json({ success: true });
@@ -338,13 +394,35 @@ async function startServer() {
 
     try {
       const db = getDb();
-      const q = await db.collection("users").where("nim", "==", nim).where("deleted", "!=", true).limit(1).get();
+      // Use query without deleted check since we are moving to hard delete but defensive against orphans
+      const q = await db.collection("users").where("nim", "==", nim).get();
       
       if (q.empty) {
         return res.json({ available: true });
       }
 
-      res.json({ available: false });
+      // Defense against zombies: check if any found records actually have Auth
+      let foundAlive = false;
+      for (const doc of q.docs) {
+        try {
+          const u = await admin.auth().getUser(doc.id);
+          if (u) {
+            foundAlive = true;
+            break;
+          }
+        } catch (e: any) {
+          if (e.code !== 'auth/user-not-found') {
+            console.error("Auth check error during NIM validation:", e);
+          }
+          // if not found, it's a zombie, we allow re-use
+        }
+      }
+
+      if (foundAlive) {
+        return res.json({ available: false });
+      }
+
+      res.json({ available: true, note: "Found orphan record with this NIM, but Auth is free." });
     } catch (error: any) {
       console.error("Check NIM Error:", error);
       res.status(500).json({ error: "Internal server error" });
@@ -360,13 +438,44 @@ async function startServer() {
 
     try {
       const db = getDb();
-      const q = await db.collection("users").where("email", "==", email).where("deleted", "!=", true).limit(1).get();
+      // Look for ANY document with this email
+      const q = await db.collection("users").where("email", "==", email).get();
       
       if (q.empty) {
         return res.json({ available: true });
       }
 
-      res.json({ available: false });
+      // Check if ANY of the found records are "alive" in Auth
+      let foundAlive = false;
+      let activeUser: any = null;
+
+      for (const doc of q.docs) {
+        try {
+          const u = await admin.auth().getUser(doc.id);
+          if (u) {
+            foundAlive = true;
+            activeUser = doc.data();
+            break;
+          }
+        } catch (e: any) {
+          // If auth not found, it's a zombie record. We ignore it for availability check
+          if (e.code !== 'auth/user-not-found') {
+            console.error("Auth check error during email validation:", e);
+          }
+        }
+      }
+
+      if (foundAlive && activeUser) {
+        return res.json({ 
+          available: false, 
+          role: activeUser.role,
+          name: activeUser.name 
+        });
+      }
+
+      // If we reach here, we found record(s) in Firestore but NONE in Auth
+      // These are orphan records blocking the system.
+      res.json({ available: true, note: "Found orphan Firestore records, but Auth is free." });
     } catch (error: any) {
       console.error("Check Email Error:", error);
       res.status(500).json({ error: "Internal server error" });
@@ -382,7 +491,7 @@ async function startServer() {
 
     try {
       const db = getDb();
-      const q = await db.collection("users").where("nim", "==", nim).where("deleted", "!=", true).limit(1).get();
+      const q = await db.collection("users").where("nim", "==", nim).limit(1).get();
       
       if (q.empty) {
         return res.status(404).json({ error: "User not found" });
@@ -450,12 +559,31 @@ async function startServer() {
   
   // 1. Request OTP
   app.post("/api/auth/otp/request", async (req, res) => {
-    const { email } = req.body;
-    if (!email) return res.status(400).json({ error: "Email is required" });
+    let { email } = req.body;
+    if (!email) return res.status(400).json({ error: "Email atau NIM diperlukan" });
 
     try {
       const db = getDb();
       
+      // Auto-lookup email if NIM/NIP is provided instead of email
+      if (!email.includes("@")) {
+        console.log(`[DEBUG] Attempting NIM lookup for: ${email}`);
+        const userQuery = await db.collection("users")
+          .where("nim", "==", email)
+          .where("deleted", "!=", true)
+          .limit(1)
+          .get();
+        
+        if (userQuery.empty) {
+          return res.status(404).json({ 
+            success: false, 
+            message: `Akun dengan NIM/ID "${email}" tidak ditemukan. Pastikan Anda sudah mendaftar.` 
+          });
+        }
+        email = userQuery.docs[0].data().email;
+        console.log(`[DEBUG] Found email "${email}" for NIM lookup.`);
+      }
+
       // Check if user exists in Auth first
       try {
         await admin.auth().getUserByEmail(email);
@@ -466,11 +594,11 @@ async function startServer() {
         throw e;
       }
 
-      // Generate 6-digit OTP
-      const otp = Math.floor(100000 + Math.random() * 900000).toString();
+      // Generate secure 6-digit OTP using crypto.randomInt (min inclusive, max exclusive)
+      const otp = crypto.randomInt(100000, 1000000).toString();
       const hashedOtp = crypto.createHash('sha256').update(otp).digest('hex');
       
-      const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 mins
+      const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 mins expiry
       
       // Store in Firestore (Overwrite existing if any)
       await db.collection("otp_resets").doc(email).set({
@@ -498,7 +626,7 @@ async function startServer() {
             <div style="text-align: center; margin: 30px 0;">
               <span style="font-size: 32px; font-weight: bold; letter-spacing: 12px; color: #4f46e5; border: 2px dashed #4f46e5; padding: 10px 20px; border-radius: 10px;">${otp}</span>
             </div>
-            <p style="color: #666; font-size: 14px;">Kode ini berlaku selama <strong>5 menit</strong>. Jangan bagikan kode ini kepada siapapun.</p>
+            <p style="color: #666; font-size: 14px;">Kode ini hanya berlaku <strong>1 (satu) kali</strong> selama <strong>10 menit</strong>. Jangan bagikan kode ini kepada siapapun.</p>
             <hr style="margin: 30px 0; border: 0; border-top: 1px solid #eee;" />
             <p style="color: #999; font-size: 12px;">© 2026 Portal Kampus</p>
           </div>
@@ -513,7 +641,11 @@ async function startServer() {
         details: `6-digit OTP generated and sent to ${email}`
       });
 
-      res.json({ success: true, message: "OTP telah dikirim ke email Anda." });
+      res.json({ 
+        success: true, 
+        message: "OTP telah dikirim ke email Anda.",
+        resolvedEmail: email 
+      });
     } catch (error: any) {
       console.error("!!! OTP REQUEST CRITICAL ERROR !!!");
       console.error("Error Name:", error.name);
@@ -532,6 +664,14 @@ async function startServer() {
           link: "https://console.developers.google.com/apis/api/identitytoolkit.googleapis.com/overview?project=352507716087"
         });
       }
+
+      // Handle custom helper errors (SMTP, Invalid recipient)
+      if (error.message.includes("SMTP_AUTH_FAILED") || error.message.includes("INVALID_RECIPIENT")) {
+        return res.status(500).json({
+          success: false,
+          message: error.message
+        });
+      }
       
       res.status(500).json({ 
         success: false, 
@@ -543,11 +683,18 @@ async function startServer() {
 
   // 2. Verify OTP
   app.post("/api/auth/otp/verify", async (req, res) => {
-    const { email, otp } = req.body;
+    let { email, otp } = req.body;
     if (!email || !otp) return res.status(400).json({ error: "Email and OTP are required" });
 
     try {
       const db = getDb();
+      
+      // Support NIM lookup in verify too
+      if (!email.includes("@")) {
+        const userQuery = await db.collection("users").where("nim", "==", email).where("deleted", "!=", true).limit(1).get();
+        if (!userQuery.empty) email = userQuery.docs[0].data().email;
+      }
+
       const otpDoc = await db.collection("otp_resets").doc(email).get();
 
       if (!otpDoc.exists) {
@@ -557,23 +704,23 @@ async function startServer() {
       const data = otpDoc.data()!;
       const hashedInput = crypto.createHash('sha256').update(otp).digest('hex');
 
-      // Check expiry
+      // Check expiry (10-minute window)
       if (Date.now() > data.expiresAt.toDate().getTime()) {
         await db.collection("otp_resets").doc(email).delete();
-        return res.status(400).json({ success: false, message: "OTP sudah kadaluarsa. Silakan minta kode baru." });
+        return res.status(400).json({ success: false, message: "Kode OTP sudah kadaluarsa (lebih dari 10 menit). Silakan minta kode baru." });
       }
 
-      // Check attempts (Rate limiting: max 3)
+      // Check attempts (Rate limiting: max 3 attempts)
       if (data.attempts >= 3) {
         await db.collection("otp_resets").doc(email).delete();
-        return res.status(400).json({ success: false, message: "Terlalu banyak percobaan. Silakan minta kode baru." });
+        return res.status(400).json({ success: false, message: "Terlalu banyak percobaan salah. Silakan minta kode baru demi keamanan." });
       }
 
       if (data.hashedOtp !== hashedInput) {
         await db.collection("otp_resets").doc(email).update({
           attempts: admin.firestore.FieldValue.increment(1)
         });
-        return res.status(400).json({ success: false, message: "Kode OTP salah." });
+        return res.status(400).json({ success: false, message: "Kode OTP salah. Periksa kembali email Anda." });
       }
 
       // Valid: Mark as verified
@@ -590,11 +737,18 @@ async function startServer() {
 
   // 3. Complete Password Reset
   app.post("/api/auth/otp/complete-reset", async (req, res) => {
-    const { email, otp, newPassword } = req.body;
+    let { email, otp, newPassword } = req.body;
     if (!email || !otp || !newPassword) return res.status(400).json({ error: "Email, OTP, and newPassword are required" });
 
     try {
       const db = getDb();
+
+      // Support NIM lookup in complete too
+      if (!email.includes("@")) {
+        const userQuery = await db.collection("users").where("nim", "==", email).where("deleted", "!=", true).limit(1).get();
+        if (!userQuery.empty) email = userQuery.docs[0].data().email;
+      }
+
       const otpDoc = await db.collection("otp_resets").doc(email).get();
 
       if (!otpDoc.exists) {
@@ -712,7 +866,7 @@ async function startServer() {
             if (!userDoc.exists) continue;
             
             const user = userDoc.data();
-            if (!user || user.deleted) continue;
+            if (!user) continue;
 
             const reminderMinutes = user.reminderMinutes || 30;
             const startTimeStr = booking.start_at || booking.startTime;
