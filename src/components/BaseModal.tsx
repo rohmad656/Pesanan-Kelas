@@ -52,14 +52,14 @@ export default function BaseModal({
           />
 
           {/* Modal Container */}
-          <div className="fixed inset-0 z-[201] flex items-center justify-center p-4 pointer-events-none">
+          <div className="fixed inset-0 z-[201] flex items-center justify-center p-6 md:p-12 pointer-events-none">
             <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              initial={{ opacity: 0, scale: 0.9, y: 0 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+              exit={{ opacity: 0, scale: 0.9, y: 0 }}
+              transition={{ type: 'spring', damping: 25, stiffness: 400 }}
               className={cn(
-                "bg-white dark:bg-[#1e1e2d] w-full max-w-lg rounded-3xl shadow-2xl border border-slate-200 dark:border-[#3F3F5A]/50 pointer-events-auto flex flex-col max-h-[90vh] relative",
+                "bg-white dark:bg-[#1e1e2d] w-full max-w-lg rounded-[2rem] shadow-[0_20px_50px_rgba(0,0,0,0.3)] border border-slate-200 dark:border-[#3F3F5A]/50 pointer-events-auto flex flex-col max-h-[85vh] relative",
                 className
               )}
             >

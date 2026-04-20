@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { User, Mail, Lock, Bell, Save, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { User, Mail, Lock, Bell, Save, AlertTriangle, CheckCircle2, Eye, EyeOff } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 export default function Profile() {
@@ -12,6 +12,7 @@ export default function Profile() {
   const [whatsappNumber, setWhatsappNumber] = useState(profile?.whatsappNumber || (profile as any)?.whatsapp || '');
   const [division, setDivision] = useState(profile?.division || '');
   const [newPassword, setNewPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [notifPortal, setNotifPortal] = useState(profile?.notifPortal ?? true);
   const [notifEmail, setNotifEmail] = useState(profile?.notifEmail ?? true);
   const [notifWhatsApp, setNotifWhatsApp] = useState(profile?.notifWhatsApp ?? false);
@@ -262,13 +263,23 @@ export default function Profile() {
               <div className="space-y-4">
                 <div className="space-y-1.5">
                   <label className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-[#B4B4C8]">Kata Sandi Baru</label>
-                  <input 
-                    type="password" 
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    placeholder="Biarkan kosong jika tidak ingin mengubah"
-                    className="w-full px-4 py-2.5 bg-slate-50 dark:bg-[#1E1E2F] border border-slate-200 dark:border-[#3F3F5A]/30 rounded-xl focus:outline-none focus:border-[#ffafd5] text-slate-900 dark:text-[#F5F5F5]"
-                  />
+                  <div className="relative">
+                    <input 
+                      type={showPassword ? 'text' : 'password'}
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      placeholder="Biarkan kosong jika tidak ingin mengubah"
+                      className="w-full px-4 py-2.5 bg-slate-50 dark:bg-[#1E1E2F] border border-slate-200 dark:border-[#3F3F5A]/30 rounded-xl focus:outline-none focus:border-brand-dark-accent text-slate-900 dark:text-[#F5F5F5] pr-12"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-[#F5F5F5] transition-colors"
+                      title={showPassword ? "Sembunyikan sandi" : "Tampilkan sandi"}
+                    >
+                      {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>

@@ -135,4 +135,10 @@
     background-color: #3b82f6;
     color: #ffffff;
   }
+
+  /* Hide native browser password reveal buttons to avoid double icons and inconsistent behavior */
+  input::-ms-reveal,
+  input::-ms-clear {
+    display: none;
+  }
 }

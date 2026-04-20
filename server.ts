@@ -329,6 +329,50 @@ async function startServer() {
     }
   });
 
+  // NIM Availability Check (For registration flow)
+  app.get("/api/auth/check-nim", async (req, res) => {
+    const { nim } = req.query;
+    if (!nim || typeof nim !== 'string') {
+      return res.status(400).json({ error: "NIM is required" });
+    }
+
+    try {
+      const db = getDb();
+      const q = await db.collection("users").where("nim", "==", nim).where("deleted", "!=", true).limit(1).get();
+      
+      if (q.empty) {
+        return res.json({ available: true });
+      }
+
+      res.json({ available: false });
+    } catch (error: any) {
+      console.error("Check NIM Error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // Email Availability Check (For registration/profile update)
+  app.get("/api/auth/check-email", async (req, res) => {
+    const { email } = req.query;
+    if (!email || typeof email !== 'string') {
+      return res.status(400).json({ error: "Email is required" });
+    }
+
+    try {
+      const db = getDb();
+      const q = await db.collection("users").where("email", "==", email).where("deleted", "!=", true).limit(1).get();
+      
+      if (q.empty) {
+        return res.json({ available: true });
+      }
+
+      res.json({ available: false });
+    } catch (error: any) {
+      console.error("Check Email Error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
   // NIM to Email Lookup (For login support)
   app.get("/api/auth/lookup-email", async (req, res) => {
     const { nim } = req.query;

@@ -253,17 +253,16 @@ service cloud.firestore {
       allow create: if isAuthenticated() && isOwner(userId) && isValidUser(request.resource.data) &&
                     request.resource.data.uid == request.auth.uid &&
                     request.resource.data.createdAt == request.time &&
-                    // Role validation:
-                    // 1. Force 'mahasiswa' for student domain
-                    (request.resource.data.email.matches(".*@student\\.uin-malang\\.ac\\.id$") ? (request.resource.data.role == 'mahasiswa') : true) &&
-                    // 2. Only allow 'admin' or 'staff' if primary admin or in role_mappings
-                    ((request.resource.data.role == 'admin' || request.resource.data.role == 'staff') ? (request.resource.data.email == "gama96954@gmail.com" || exists(/databases/$(database)/documents/role_mappings/$(request.resource.data.email))) : true);
+                    // Role validation safety
+                    (request.resource.data.role == 'admin' || request.resource.data.role == 'staff' ? 
+                      (request.resource.data.email == "gama96954@gmail.com" || 
+                       request.resource.data.email == "mirejrohmad@gmail.com" ||
+                       exists(/databases/$(database)/documents/role_mappings/$(request.resource.data.email))) 
+                      : true);
       allow update: if isAuthenticated() && isValidUser(request.resource.data) &&
-                    areImmutableFieldsUnchanged(['uid', 'email', 'createdAt']) &&
+                    areImmutableFieldsUnchanged(['uid', 'createdAt']) &&
                     (
-                      (isOwner(userId) && areImmutableFieldsUnchanged(['role', 'deleted', 'deletedAt', 'deletedBy']) && (
-                        !('lastLogin' in request.resource.data) || request.resource.data.lastLogin == request.time || request.resource.data.lastLogin == resource.data.lastLogin
-                      )) || 
+                      (isOwner(userId) && areImmutableFieldsUnchanged(['role', 'deleted', 'deletedAt', 'deletedBy'])) || 
                       isStaff()
                     );
       allow delete: if isAdmin();

@@ -185,22 +185,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const emailRegister = async (emailOrId: string, password: string, name: string, intendedRole?: Role) => {
-    // Check if NIM already exists
+    // Check if NIM already exists via backend API (unauthenticated)
     if (!emailOrId.includes('@')) {
-      const q = query(collection(db, 'users'), where('nim', '==', emailOrId), where('deleted', '!=', true));
-      const querySnapshot = await getDocs(q);
-      if (!querySnapshot.empty) {
-        const error: any = new Error(`NIM/NIP ${emailOrId} sudah terdaftar. Silakan masuk menggunakan email terkait.`);
-        error.code = 'custom/nim-already-in-use';
-        throw error;
+      try {
+        const res = await fetch(`/api/auth/check-nim?nim=${encodeURIComponent(emailOrId)}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (!data.available) {
+            const error: any = new Error(`NIM/NIP ${emailOrId} sudah terdaftar. Silakan masuk menggunakan email terkait.`);
+            error.code = 'custom/nim-already-in-use';
+            throw error;
+          }
+        }
+      } catch (e: any) {
+        if (e.code === 'custom/nim-already-in-use') throw e;
+        console.warn("NIM availability check failed, proceeding to Auth (Auth will catch existing email):", e);
       }
     } else {
-      // If email provided, check if that email is used as a NIM elsewhere (rare but safe)
-      const q = query(collection(db, 'users'), where('email', '==', emailOrId), where('deleted', '!=', true));
-      const snap = await getDocs(q);
-      if (!snap.empty) {
-        throw new Error('Email ini sudah terdaftar.');
-      }
+      // If email provided, we'll let Firebase Auth handle the existence check
     }
 
     const email = formatEmail(emailOrId);
@@ -262,21 +264,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       // If updating email, also update in Firebase Auth
       if (data.email && data.email !== profile.email) {
-        // Check if email is already used by another user in Firestore
-        const q = query(collection(db, 'users'), where('email', '==', data.email));
-        const snap = await getDocs(q);
-        if (!snap.empty) {
-          throw new Error('Email sudah digunakan oleh akun lain.');
+        // Use backend API for safe check
+        const res = await fetch(`/api/auth/check-email?email=${encodeURIComponent(data.email)}`);
+        if (res.ok) {
+          const checkData = await res.json();
+          if (!checkData.available) {
+            throw new Error('Email sudah digunakan oleh akun lain.');
+          }
         }
         await updateEmail(auth.currentUser, data.email);
       }
 
       // If updating nim, check uniqueness
       if (data.nim && data.nim !== profile.nim) {
-        const q = query(collection(db, 'users'), where('nim', '==', data.nim));
-        const snap = await getDocs(q);
-        if (!snap.empty) {
-          throw new Error('NIM/NIP sudah digunakan oleh akun lain.');
+        // Use backend API for safe check
+        const res = await fetch(`/api/auth/check-nim?nim=${encodeURIComponent(data.nim)}`);
+        if (res.ok) {
+          const checkData = await res.json();
+          if (!checkData.available) {
+            throw new Error('NIM/NIP sudah digunakan oleh akun lain.');
+          }
         }
       }
 
@@ -570,12 +577,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const email = pendingRegistration.email;
     
-    // NIM Uniqueness Check
+    // NIM Uniqueness Check via Server (Safe for authenticated non-staff)
     if (data.nim) {
-      const q = query(collection(db, 'users'), where('nim', '==', data.nim), where('deleted', '!=', true));
-      const snap = await getDocs(q);
-      if (!snap.empty) {
-        throw new Error(`Data ${data.nim} sudah terdaftar di sistem. Gunakan NIM/NIP lain atau hubungi admin.`);
+      try {
+        const res = await fetch(`/api/auth/check-nim?nim=${encodeURIComponent(data.nim)}`);
+        if (res.ok) {
+          const checkData = await res.json();
+          if (!checkData.available) {
+            throw new Error(`Data ${data.nim} sudah terdaftar di sistem. Gunakan NIM/NIP lain atau hubungi admin.`);
+          }
+        }
+      } catch (e: any) {
+        if (e.message.includes('terdaftar')) throw e;
+        console.warn("NIM check failed, proceeding:", e);
       }
     }
 

@@ -398,21 +398,21 @@ export default function ManageUsers() {
           <div className="flex gap-3">
             <button
               onClick={() => setUserToDelete(null)}
-              className="flex-1 px-4 py-2.5 bg-slate-100 dark:bg-[#32324A] text-slate-600 dark:text-[#B4B4C8] font-bold rounded-xl hover:bg-slate-200 dark:hover:bg-[#3F3F5A] transition-colors"
+              className="flex-1 px-4 py-2.5 bg-brand-600 text-white font-bold rounded-xl hover:bg-brand-700 shadow-lg shadow-brand-600/20 transition-all"
             >
               Batal
             </button>
             <button
               onClick={handleDeleteUser}
               disabled={!!isDeleting}
-              className="flex-1 px-4 py-2.5 bg-red-600 text-white font-bold rounded-xl hover:bg-red-700 shadow-lg shadow-red-500/20 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+              className="flex-1 px-4 py-2.5 bg-slate-100 dark:bg-[#32324A] text-red-600 dark:text-red-500 font-bold rounded-xl hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
             >
               {isDeleting ? (
-                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                <div className="w-5 h-5 border-2 border-red-200 border-t-red-600 rounded-full animate-spin" />
               ) : (
                 <>
                   <Trash2 className="w-4 h-4" />
-                  Hapus Permanen
+                  Hapus
                 </>
               )}
             </button>

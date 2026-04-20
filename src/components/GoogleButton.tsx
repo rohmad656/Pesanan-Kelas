@@ -19,6 +19,7 @@ export const GoogleButton: React.FC<GoogleButtonProps> = ({
 }) => {
   return (
     <button 
+      type="button"
       onClick={onClick}
       disabled={disabled || loading}
       className={cn(
