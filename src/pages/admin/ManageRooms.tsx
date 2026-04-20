@@ -1,14 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { createPortal } from 'react-dom';
 import { collection, query, onSnapshot, addDoc, updateDoc, deleteDoc, doc, serverTimestamp } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../lib/firebase';
 import { Plus, Edit2, Trash2, XCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 
+import BaseModal from '../../components/BaseModal';
+
 export default function ManageRooms() {
   const [rooms, setRooms] = useState<any[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingRoom, setEditingRoom] = useState<any | null>(null);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     name: '',
     building: '',
@@ -63,20 +65,6 @@ export default function ManageRooms() {
       handleFirestoreError(error, editingRoom ? OperationType.UPDATE : OperationType.CREATE, 'rooms');
     }
   };
-
-  const [deleteId, setDeleteId] = useState<string | null>(null);
-
-  // Scroll Lock for Modals
-  useEffect(() => {
-    if (isModalOpen || deleteId) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = 'unset';
-    }
-    return () => {
-      document.body.style.overflow = 'unset';
-    };
-  }, [isModalOpen, deleteId]);
 
   const handleDelete = async () => {
     if (!deleteId) return;
@@ -171,138 +159,138 @@ export default function ManageRooms() {
       </div>
 
       {/* Delete Confirmation Modal */}
-      {deleteId && createPortal(
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[9999] p-4">
-          <div className="bg-white dark:bg-[#27273A] dark:shadow-lg dark:shadow-black/20 w-[95vw] max-w-sm rounded-2xl shadow-xl border border-slate-200 dark:border-[#3F3F5A]/50 overflow-hidden p-6 text-center">
-            <Trash2 className="w-12 h-12 text-red-400 mx-auto mb-4" />
-            <h3 className="text-xl font-bold text-slate-900 dark:text-[#F5F5F5] mb-2">Hapus Ruangan?</h3>
-            <p className="text-slate-600 dark:text-[#B4B4C8] text-sm mb-6">Apakah Anda yakin ingin menghapus ruangan ini? Tindakan ini tidak dapat diurungkan.</p>
-            <div className="flex gap-3">
-              <button 
-                onClick={() => setDeleteId(null)}
-                className="flex-1 py-2.5 bg-transparent border border-brand-dark-border-strong text-slate-600 dark:text-[#B4B4C8] font-bold rounded-xl hover:bg-brand-100 dark:bg-[#32324A] hover:scale-[1.02] active:scale-[0.98] transition-all"
-              >
-                Batal
-              </button>
-              <button 
-                onClick={handleDelete}
-                className="flex-1 py-2.5 bg-red-500/20 text-red-400 border border-red-500/30 font-bold rounded-xl hover:bg-red-500/30 hover:scale-[1.02] active:scale-[0.98] transition-all"
-              >
-                Ya, Hapus
-              </button>
-            </div>
+      <BaseModal
+        isOpen={!!deleteId}
+        onClose={() => setDeleteId(null)}
+        className="max-w-sm"
+      >
+        <div className="text-center space-y-6">
+          <div className="w-16 h-16 bg-red-100 dark:bg-red-500/10 rounded-full flex items-center justify-center mx-auto">
+            <Trash2 className="w-8 h-8 text-red-600 dark:text-red-400" />
           </div>
-        </div>,
-        document.body
-      )}
+          <div>
+            <h3 className="text-xl font-bold text-slate-900 dark:text-[#F5F5F5]">Hapus Ruangan?</h3>
+            <p className="text-slate-600 dark:text-[#B4B4C8] text-sm mt-2">
+              Apakah Anda yakin ingin menghapus ruangan ini? Tindakan ini tidak dapat diurungkan.
+            </p>
+          </div>
+          <div className="flex gap-3">
+            <button 
+              onClick={() => setDeleteId(null)}
+              className="flex-1 py-3 bg-slate-100 dark:bg-[#32324A] text-slate-600 dark:text-[#B4B4C8] font-bold rounded-xl hover:bg-slate-200 dark:hover:bg-[#3F3F5A] transition-all"
+            >
+              Batal
+            </button>
+            <button 
+              onClick={handleDelete}
+              className="flex-1 py-3 bg-red-600 text-white font-bold rounded-xl hover:bg-red-700 shadow-lg shadow-red-500/20 transition-all"
+            >
+              Ya, Hapus
+            </button>
+          </div>
+        </div>
+      </BaseModal>
 
-      {isModalOpen && createPortal(
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[9999] p-4">
-          <div className="bg-white dark:bg-[#27273A] dark:shadow-lg dark:shadow-black/20 w-[95vw] max-w-[600px] rounded-2xl shadow-xl border border-slate-200 dark:border-[#3F3F5A]/50 overflow-hidden max-h-[95vh] flex flex-col">
-            <div className="p-6 border-b border-slate-200 dark:border-[#3F3F5A]/30 flex justify-between items-center shrink-0">
-              <h2 className="text-xl font-bold text-slate-900 dark:text-[#F5F5F5]">
-                {editingRoom ? 'Edit Ruangan' : 'Tambah Ruangan Baru'}
-              </h2>
-              <button onClick={() => setIsModalOpen(false)} className="text-slate-600 dark:text-[#B4B4C8] hover:text-slate-900 dark:text-[#F5F5F5] hover:scale-110 active:scale-90 transition-all">
-                <XCircle className="w-6 h-6" />
-              </button>
+      {/* Add/Edit Modal */}
+      <BaseModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        title={editingRoom ? 'Edit Ruangan' : 'Tambah Ruangan Baru'}
+        description={editingRoom ? 'Perbarui informasi ruangan terpilih' : 'Daftarkan ruangan baru ke dalam sistem'}
+        className="max-w-xl"
+      >
+        <form onSubmit={handleSubmit} className="space-y-6">
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-[#B4B4C8]">Nama Ruangan</label>
+              <input 
+                type="text" required value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})}
+                className="w-full px-4 py-2.5 bg-slate-50 dark:bg-[#32324A] border border-slate-200 dark:border-[#3F3F5A]/50 rounded-xl text-slate-900 dark:text-[#F5F5F5] focus:outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+              />
             </div>
             
-            <form onSubmit={handleSubmit} className="flex flex-col overflow-hidden">
-              <div className="p-6 space-y-4 overflow-y-auto">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-[#B4B4C8]">Nama Ruangan</label>
-                  <input 
-                    type="text" required value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})}
-                    className="w-full px-3 py-2 bg-brand-100 dark:bg-[#32324A] border border-slate-200 dark:border-[#3F3F5A]/50 rounded-lg text-slate-900 dark:text-[#F5F5F5] focus:outline-none focus:border-brand-400 dark:border-brand-dark-accent"
-                  />
-                </div>
-                
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-[#B4B4C8]">Gedung</label>
-                    <input 
-                      type="text" required value={formData.building} onChange={(e) => setFormData({...formData, building: e.target.value})}
-                      className="w-full px-3 py-2 bg-brand-100 dark:bg-[#32324A] border border-slate-200 dark:border-[#3F3F5A]/50 rounded-lg text-slate-900 dark:text-[#F5F5F5] focus:outline-none focus:border-brand-400 dark:border-brand-dark-accent"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-[#B4B4C8]">Lantai</label>
-                    <input 
-                      type="number" required min="1" value={formData.floor} onChange={(e) => setFormData({...formData, floor: Number(e.target.value)})}
-                      className="w-full px-3 py-2 bg-brand-100 dark:bg-[#32324A] border border-slate-200 dark:border-[#3F3F5A]/50 rounded-lg text-slate-900 dark:text-[#F5F5F5] focus:outline-none focus:border-brand-400 dark:border-brand-dark-accent"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-[#B4B4C8]">Kapasitas (Orang)</label>
-                    <input 
-                      type="number" required min="1" value={formData.capacity} onChange={(e) => setFormData({...formData, capacity: Number(e.target.value)})}
-                      className="w-full px-3 py-2 bg-brand-100 dark:bg-[#32324A] border border-slate-200 dark:border-[#3F3F5A]/50 rounded-lg text-slate-900 dark:text-[#F5F5F5] focus:outline-none focus:border-brand-400 dark:border-brand-dark-accent"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-[#B4B4C8]">Status</label>
-                    <select 
-                      value={formData.status} onChange={(e) => setFormData({...formData, status: e.target.value})}
-                      className="w-full px-3 py-2 bg-brand-100 dark:bg-[#32324A] border border-slate-200 dark:border-[#3F3F5A]/50 rounded-lg text-slate-900 dark:text-[#F5F5F5] focus:outline-none focus:border-brand-400 dark:border-brand-dark-accent"
-                    >
-                      <option value="available">Tersedia</option>
-                      <option value="maintenance">Perbaikan</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-[#B4B4C8]">Fasilitas (Pisahkan dengan koma)</label>
-                  <input 
-                    type="text" value={formData.facilities} onChange={(e) => setFormData({...formData, facilities: e.target.value})}
-                    placeholder="AC, Proyektor, Papan Tulis..."
-                    className="w-full px-3 py-2 bg-brand-100 dark:bg-[#32324A] border border-slate-200 dark:border-[#3F3F5A]/50 rounded-lg text-slate-900 dark:text-[#F5F5F5] focus:outline-none focus:border-brand-400 dark:border-brand-dark-accent"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-[#B4B4C8]">URL Gambar (Opsional)</label>
-                  <input 
-                    type="url" value={formData.imageUrl} onChange={(e) => setFormData({...formData, imageUrl: e.target.value})}
-                    placeholder="https://example.com/image.jpg"
-                    className="w-full px-3 py-2 bg-brand-100 dark:bg-[#32324A] border border-slate-200 dark:border-[#3F3F5A]/50 rounded-lg text-slate-900 dark:text-[#F5F5F5] focus:outline-none focus:border-brand-400 dark:border-brand-dark-accent"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-[#B4B4C8]">Peraturan Ruangan</label>
-                  <textarea 
-                    value={formData.rules} onChange={(e) => setFormData({...formData, rules: e.target.value})}
-                    placeholder="Dilarang makan dan minum, rapikan kursi setelah selesai..."
-                    rows={3}
-                    className="w-full px-3 py-2 bg-brand-100 dark:bg-[#32324A] border border-slate-200 dark:border-[#3F3F5A]/50 rounded-lg text-slate-900 dark:text-[#F5F5F5] placeholder:text-slate-600 dark:text-[#B4B4C8]/50 focus:outline-none focus:border-brand-400 dark:border-brand-dark-accent resize-none"
-                  ></textarea>
-                </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-[#B4B4C8]">Gedung</label>
+                <input 
+                  type="text" required value={formData.building} onChange={(e) => setFormData({...formData, building: e.target.value})}
+                  className="w-full px-4 py-2.5 bg-slate-50 dark:bg-[#32324A] border border-slate-200 dark:border-[#3F3F5A]/50 rounded-xl text-slate-900 dark:text-[#F5F5F5] focus:outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+                />
               </div>
-
-              <div className="p-6 pt-4 border-t border-slate-200 dark:border-[#3F3F5A]/30 flex gap-3 shrink-0">
-                <button 
-                  type="button" onClick={() => setIsModalOpen(false)}
-                  className="flex-1 py-2.5 bg-transparent border border-brand-dark-border-strong text-slate-600 dark:text-[#B4B4C8] font-bold rounded-xl hover:bg-brand-100 dark:bg-[#32324A] hover:scale-[1.02] active:scale-[0.98] transition-all"
-                >
-                  Batal
-                </button>
-                <button 
-                  type="submit"
-                  className="flex-1 py-2.5 bg-brand-dark-accent-light text-brand-dark-on-accent font-bold rounded-xl hover:bg-brand-dark-accent-hover hover:scale-[1.02] active:scale-[0.98] transition-all"
-                >
-                  Simpan
-                </button>
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-[#B4B4C8]">Lantai</label>
+                <input 
+                  type="number" required min="1" value={formData.floor} onChange={(e) => setFormData({...formData, floor: Number(e.target.value)})}
+                  className="w-full px-4 py-2.5 bg-slate-50 dark:bg-[#32324A] border border-slate-200 dark:border-[#3F3F5A]/50 rounded-xl text-slate-900 dark:text-[#F5F5F5] focus:outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+                />
               </div>
-            </form>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-[#B4B4C8]">Kapasitas (Orang)</label>
+                <input 
+                  type="number" required min="1" value={formData.capacity} onChange={(e) => setFormData({...formData, capacity: Number(e.target.value)})}
+                  className="w-full px-4 py-2.5 bg-slate-50 dark:bg-[#32324A] border border-slate-200 dark:border-[#3F3F5A]/50 rounded-xl text-slate-900 dark:text-[#F5F5F5] focus:outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-[#B4B4C8]">Status</label>
+                <select 
+                  value={formData.status} onChange={(e) => setFormData({...formData, status: e.target.value})}
+                  className="w-full px-4 py-2.5 bg-slate-50 dark:bg-[#32324A] border border-slate-200 dark:border-[#3F3F5A]/50 rounded-xl text-slate-900 dark:text-[#F5F5F5] focus:outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+                >
+                  <option value="available">Tersedia</option>
+                  <option value="maintenance">Perbaikan</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-[#B4B4C8]">Fasilitas (Pisahkan dengan koma)</label>
+              <input 
+                type="text" value={formData.facilities} onChange={(e) => setFormData({...formData, facilities: e.target.value})}
+                placeholder="AC, Proyektor, Papan Tulis..."
+                className="w-full px-4 py-2.5 bg-slate-50 dark:bg-[#32324A] border border-slate-200 dark:border-[#3F3F5A]/50 rounded-xl text-slate-900 dark:text-[#F5F5F5] focus:outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-[#B4B4C8]">URL Gambar (Opsional)</label>
+              <input 
+                type="url" value={formData.imageUrl} onChange={(e) => setFormData({...formData, imageUrl: e.target.value})}
+                placeholder="https://example.com/image.jpg"
+                className="w-full px-4 py-2.5 bg-slate-50 dark:bg-[#32324A] border border-slate-200 dark:border-[#3F3F5A]/50 rounded-xl text-slate-900 dark:text-[#F5F5F5] focus:outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-[#B4B4C8]">Peraturan Ruangan</label>
+              <textarea 
+                value={formData.rules} onChange={(e) => setFormData({...formData, rules: e.target.value})}
+                placeholder="Dilarang makan dan minum, rapikan kursi setelah selesai..."
+                rows={3}
+                className="w-full px-4 py-2.5 bg-slate-50 dark:bg-[#32324A] border border-slate-200 dark:border-[#3F3F5A]/50 rounded-xl text-slate-900 dark:text-[#F5F5F5] placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-brand-500 transition-all resize-none"
+              ></textarea>
+            </div>
           </div>
-        </div>,
-        document.body
-      )}
+
+          <div className="flex gap-3 pt-4">
+            <button 
+              type="button" onClick={() => setIsModalOpen(false)}
+              className="flex-1 py-3 bg-slate-100 dark:bg-[#32324A] text-slate-600 dark:text-[#B4B4C8] font-bold rounded-xl hover:bg-slate-200 dark:hover:bg-[#3F3F5A] transition-all"
+            >
+              Batal
+            </button>
+            <button 
+              type="submit"
+              className="flex-1 py-3 bg-brand-700 text-white font-bold rounded-xl hover:bg-brand-dark-hover shadow-lg shadow-brand-700/20 transition-all"
+            >
+              Simpan Ruangan
+            </button>
+          </div>
+        </form>
+      </BaseModal>
     </div>
   );
 }

@@ -16,6 +16,7 @@ import {
   Bell,
   User,
   HelpCircle,
+  AlertCircle,
   Moon,
   Sun
 } from 'lucide-react';
@@ -144,13 +145,24 @@ export default function DashboardLayout() {
     if (!profile) return;
     
     // Listen to notifications where targetRole is current role OR userId is current user
-    const q = query(
-      collection(db, 'notifications'), 
-      or(
-        where('userId', '==', profile.uid),
-        where('targetRole', '==', profile.role)
-      )
-    );
+    let q;
+    if (profile.role === 'admin' || profile.role === 'staff') {
+      q = query(
+        collection(db, 'notifications'),
+        or(
+          where('userId', '==', profile.uid),
+          where('targetRole', 'in', ['admin', 'staff'])
+        )
+      );
+    } else {
+      q = query(
+        collection(db, 'notifications'), 
+        or(
+          where('userId', '==', profile.uid),
+          where('targetRole', '==', profile.role)
+        )
+      );
+    }
     
     const unsubscribe = onSnapshot(q, (snapshot) => {
       if (!snapshot.empty) {
@@ -257,7 +269,9 @@ export default function DashboardLayout() {
         <div className="p-6 flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-extrabold text-brand-700 dark:text-brand-dark-accent tracking-tight">CampusBook</h1>
-            <p className="text-xs text-slate-600 dark:text-[#B4B4C8] mt-1 capitalize">{profile?.role} Portal</p>
+            <p className="text-xs text-slate-600 dark:text-[#B4B4C8] mt-1 capitalize">
+              {profile?.role === 'admin' || profile?.role === 'staff' ? 'Admin/Staff' : profile?.role} Portal
+            </p>
           </div>
           <button 
             onClick={() => setIsSidebarOpen(false)}
@@ -385,76 +399,102 @@ export default function DashboardLayout() {
               {theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
             </button>
             
-            <button className="relative p-2 text-slate-600 dark:text-[#B4B4C8] hover:text-brand-700 dark:hover:text-brand-dark-accent hover:bg-brand-50 dark:hover:bg-[#32324A] rounded-full transition-colors group">
-              <Bell className="w-5 h-5" />
-              {unreadCount > 0 && (
-                <span className="absolute top-0 right-0 w-4 h-4 bg-red-500 text-white text-[10px] font-bold flex items-center justify-center rounded-full border-2 border-white dark:border-[#27273A]">
-                  {unreadCount}
-                </span>
-              )}
+            <div className="relative inline-block group">
+              <button 
+                className="p-2 text-slate-600 dark:text-[#B4B4C8] hover:text-brand-700 dark:hover:text-brand-dark-accent hover:bg-brand-50 dark:hover:bg-[#32324A] rounded-full transition-colors relative"
+                aria-label="Notifikasi"
+              >
+                <Bell className="w-5 h-5" />
+                {unreadCount > 0 && (
+                  <span className="absolute top-0 right-0 w-4 h-4 bg-red-500 text-white text-[10px] font-bold flex items-center justify-center rounded-full border-2 border-white dark:border-[#27273A]">
+                    {unreadCount}
+                  </span>
+                )}
+              </button>
               
-              {/* Notification Dropdown */}
-              <div className="absolute right-0 top-full mt-2 w-80 bg-white dark:bg-[#27273A] dark:shadow-lg dark:shadow-black/20 border border-slate-200 dark:border-[#3F3F5A]/50 rounded-xl shadow-xl shadow-black/10 dark:shadow-black/50 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 origin-top-right z-50 text-left">
-                <div className="p-3 border-b border-slate-200 dark:border-[#3F3F5A]/30 flex justify-between items-center">
-                  <h3 className="font-semibold text-slate-900 dark:text-[#F5F5F5] text-sm">Notifikasi</h3>
-                  {unreadCount > 0 && (
-                    <span onClick={markAllRead} className="text-xs text-brand-600 dark:text-brand-dark-accent font-medium cursor-pointer hover:underline">
-                      Tandai semua dibaca
-                    </span>
-                  )}
-                </div>
-                <div className="p-2 max-h-80 overflow-y-auto space-y-1">
-                  
-                  {notifications.length === 0 ? (
-                    <p className="text-center text-sm text-slate-500 py-4">Belum ada notifikasi</p>
-                  ) : (
-                    notifications.map(notif => {
-                      let icon = '🔔';
-                      let bgClass = '';
-                      if (notif.type === 'reminder') { icon = '⏰'; bgClass = 'bg-blue-100 dark:bg-blue-800/50 text-blue-600 dark:text-blue-400'; }
-                      if (notif.type === 'approved') { icon = '✅'; bgClass = 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400'; }
-                      if (notif.type === 'rejected') { icon = '❌'; bgClass = 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400'; }
-                      if (notif.type === 'issue') { icon = '⚠️'; bgClass = 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-600 dark:text-yellow-400'; }
+              {/* Notification Dropdown with Technical Solution positioning */}
+              <div className="absolute right-0 top-full mt-2 w-80 bg-white dark:bg-[#27273A] dark:shadow-2xl dark:shadow-black/40 border border-slate-200 dark:border-[#3F3F5A]/50 rounded-xl shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-300 origin-top-right z-[60] text-left">
+                {/* Animation Container (Suggested slide-down) */}
+                <div className="transform translate-y-[-10px] group-hover:translate-y-0 transition-transform duration-300 ease-out">
+                  <div className="p-3 border-b border-slate-200 dark:border-[#3F3F5A]/30 flex justify-between items-center">
+                    <h3 className="font-semibold text-slate-900 dark:text-[#F5F5F5] text-sm">Notifikasi</h3>
+                    {unreadCount > 0 && (
+                      <span onClick={markAllRead} className="text-xs text-brand-600 dark:text-brand-dark-accent font-medium cursor-pointer hover:underline">
+                        Tandai semua dibaca
+                      </span>
+                    )}
+                  </div>
+                  <div className="p-2 max-h-80 overflow-y-auto space-y-1 custom-scrollbar">
+                    {notifications.length === 0 ? (
+                      <p className="text-center text-sm text-slate-500 py-4">Belum ada notifikasi</p>
+                    ) : (
+                      notifications.map(notif => {
+                        let icon = '🔔';
+                        let bgClass = '';
+                        if (notif.type === 'reminder') { icon = '⏰'; bgClass = 'bg-blue-100 dark:bg-blue-800/50 text-blue-600 dark:text-blue-400'; }
+                        if (notif.type === 'approved') { icon = '✅'; bgClass = 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400'; }
+                        if (notif.type === 'rejected') { icon = '❌'; bgClass = 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400'; }
+                        if (notif.type === 'issue') { icon = '⚠️'; bgClass = 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-600 dark:text-yellow-400'; }
 
-                      return (
-                        <div 
-                          key={notif.id}
-                          onClick={() => handleNotificationClick(notif)}
-                          className={cn(
-                            "p-3 rounded-lg cursor-pointer transition-colors flex gap-3 items-start",
-                            notif.isRead 
-                              ? "opacity-75 hover:bg-slate-50 dark:hover:bg-[#32324A]/30" 
-                              : "bg-brand-50/50 dark:bg-[#32324A]/50 border border-brand-100 dark:border-brand-800/30 hover:bg-brand-100/50 dark:hover:bg-[#32324A]"
-                          )}
-                        >
-                          <div className={cn("w-8 h-8 rounded-full flex items-center justify-center shrink-0 mt-0.5", bgClass)}>
-                            <span className="text-lg">{icon}</span>
-                          </div>
-                          <div>
-                            <p className={cn("text-sm text-slate-900 dark:text-[#F5F5F5]", notif.isRead ? "font-medium" : "font-bold")}>
-                              {notif.title}
-                            </p>
-                            <p className="text-xs text-slate-600 dark:text-[#B4B4C8] mt-1">{notif.message}</p>
-                            {notif.meta && (
-                              <p className="text-[10px] text-slate-500 dark:text-[#B4B4C8]/70 mt-1 font-medium bg-white/50 dark:bg-black/20 inline-block px-2 py-0.5 rounded">
-                                {notif.meta}
-                              </p>
+                        return (
+                          <div 
+                            key={notif.id}
+                            onClick={() => handleNotificationClick(notif)}
+                            className={cn(
+                              "p-3 rounded-lg cursor-pointer transition-colors flex gap-3 items-start",
+                              notif.isRead 
+                                ? "opacity-75 hover:bg-slate-50 dark:hover:bg-[#32324A]/30" 
+                                : "bg-brand-50/50 dark:bg-[#32324A]/50 border border-brand-100 dark:border-brand-800/30 hover:bg-brand-100/50 dark:hover:bg-[#32324A]"
                             )}
+                          >
+                            <div className={cn("w-8 h-8 rounded-full flex items-center justify-center shrink-0 mt-0.5", bgClass)}>
+                              <span className="text-lg">{icon}</span>
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className={cn("text-sm text-slate-900 dark:text-[#F5F5F5] truncate", notif.isRead ? "font-medium" : "font-bold")}>
+                                {notif.title}
+                              </p>
+                              <p className="text-xs text-slate-600 dark:text-[#B4B4C8] mt-1 line-clamp-2">{notif.message}</p>
+                              {notif.meta && (
+                                <p className="text-[10px] text-slate-500 dark:text-[#B4B4C8]/70 mt-1 font-medium bg-white/50 dark:bg-black/20 inline-block px-2 py-0.5 rounded">
+                                  {notif.meta}
+                                </p>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      );
-                    })
-                  )}
-
-                </div>
-                <div className="p-2 border-t border-slate-200 dark:border-[#3F3F5A]/30 text-center">
-                  <Link to="/pesan" className="text-xs text-brand-600 dark:text-brand-dark-accent font-bold hover:underline">Baca Semua Pesan</Link>
+                        );
+                      })
+                    )}
+                  </div>
+                  <div className="p-2 border-t border-slate-200 dark:border-[#3F3F5A]/30 text-center">
+                    <Link to="/pesan" className="text-xs text-brand-600 dark:text-brand-dark-accent font-bold hover:underline">Baca Semua Pesan</Link>
+                  </div>
                 </div>
               </div>
-            </button>
+            </div>
           </div>
         </header>
         <div className="flex-1 overflow-auto flex flex-col focus:outline-none relative">
+          {/* Profile Completion Prompt */}
+          {profile && !profile.profileCompleted && (
+            <div className="bg-brand-50/50 dark:bg-brand-dark-accent-light/5 border-b border-brand-200 dark:border-brand-dark-accent-light/20 px-4 md:px-8 py-3 flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="bg-brand-100 dark:bg-brand-dark-accent-light/10 p-2 rounded-full">
+                  <AlertCircle className="w-5 h-5 text-brand-600 dark:text-brand-dark-accent" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-slate-900 dark:text-white">Profil Anda Belum Lengkap</p>
+                  <p className="text-xs text-slate-500 dark:text-[#B4B4C8]">Lengkapi NIM dan No. WhatsApp untuk menggunakan fitur pemesanan ruangan.</p>
+                </div>
+              </div>
+              <Link 
+                to="/profil"
+                className="px-4 py-1.5 bg-brand-600 dark:bg-brand-dark-accent text-white dark:text-brand-dark-on-accent text-xs font-bold rounded-lg hover:shadow-lg transition-all whitespace-nowrap"
+              >
+                Lengkapi Sekarang
+              </Link>
+            </div>
+          )}
           <div className="p-4 md:p-8 flex-1">
             <Outlet />
           </div>

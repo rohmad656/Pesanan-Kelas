@@ -5,15 +5,15 @@ import { auth, db, googleProvider, handleFirestoreError, OperationType } from '.
 import emailjs from '@emailjs/browser';
 import toast from 'react-hot-toast';
 
-export type Role = 'mahasiswa' | 'dosen' | 'staff' | 'admin';
+export type Role = 'mahasiswa' | 'dosen' | 'admin';
 
 export interface UserProfile {
   uid: string;
   email: string;
   name: string;
-  role: Role;
+  role: Role | 'staff'; // Keep staff in type for legacy data compatibility
   nim?: string;
-  whatsapp?: string;
+  whatsappNumber?: string;
   division?: string;
   photoURL?: string;
   profileCompleted?: boolean;
@@ -31,8 +31,8 @@ interface AuthContextType {
   loading: boolean;
   login: (intendedRole?: Role, existingUser?: FirebaseUser) => Promise<{ isNewUser: boolean }>;
   completeRegistration: (data: Partial<UserProfile>) => Promise<void>;
-  emailLogin: (emailOrId: string, password: string) => Promise<void>;
-  emailRegister: (emailOrId: string, password: string, name: string, role: Role) => Promise<void>;
+  emailLogin: (emailOrId: string, password: string, intendedRole?: Role) => Promise<void>;
+  emailRegister: (emailOrId: string, password: string, name: string, intendedRole?: Role) => Promise<void>;
   updateUserProfile: (data: Partial<UserProfile>) => Promise<void>;
   resetPassword: (email: string) => Promise<{ success: boolean; message: string; code?: string }>;
   confirmNewPassword: (code: string, password: string) => Promise<{ success: boolean; message: string; code?: string }>;
@@ -112,32 +112,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return emailOrId.includes('@') ? emailOrId : `${emailOrId}@campus.ac.id`;
   };
 
-  const emailLogin = async (emailOrId: string, password: string) => {
+  const emailLogin = async (emailOrId: string, password: string, intendedRole?: Role) => {
     let emailToUse = emailOrId;
     
     // Support multi-identifier login (Email or NIM/NIP)
     if (!emailOrId.includes('@')) {
-      // Search by nim
-      const q = query(collection(db, 'users'), where('nim', '==', emailOrId));
-      const querySnapshot = await getDocs(q);
-      if (!querySnapshot.empty) {
-        emailToUse = querySnapshot.docs[0].data().email;
-      } else {
-        // Fallback to default campus email format
+      try {
+        // Use backend API for unauthenticated NIM-to-Email lookup
+        const res = await fetch(`/api/auth/lookup-email?nim=${encodeURIComponent(emailOrId)}`);
+        if (res.ok) {
+          const data = await res.json();
+          emailToUse = data.email;
+        } else {
+          // If not found in our mapping, fallback to default campus email format
+          emailToUse = `${emailOrId}@campus.ac.id`;
+        }
+      } catch (e) {
+        console.warn("NIM lookup failed, using fallback email format:", e);
         emailToUse = `${emailOrId}@campus.ac.id`;
       }
     } else {
-      // Even if it's an email, check if it's a secondary email or if it matches a profile
-      const q = query(collection(db, 'users'), where('email', '==', emailOrId));
-      const querySnapshot = await getDocs(q);
-      if (!querySnapshot.empty) {
-        emailToUse = querySnapshot.docs[0].data().email;
-      }
+      // Even if it's an email, check if it's a secondary email or if it matches a profile via backend or direct
+      // In this case, we prefer to just use the email provided for direct Auth login
+      emailToUse = emailOrId;
     }
 
     const result = await signInWithEmailAndPassword(auth, emailToUse, password);
-    toast.success('Login berhasil! Menyiapkan dasbor...');
-
+    
     try {
       const docRef = doc(db, 'users', result.user.uid);
       const docSnap = await getDoc(docRef);
@@ -149,8 +150,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       
       const userData = docSnap.data() as UserProfile;
+
+      // ROLE VALIDATION (Post-Login Context Check)
+      if (intendedRole && userData.role !== intendedRole) {
+        // Unify staff/admin check for 'admin' portal
+        const isStaffAdminMismatch = (intendedRole === 'admin' && (userData.role === 'admin' || userData.role === 'staff'));
+        if (!isStaffAdminMismatch) {
+          toast.error(`Anda terdaftar sebagai ${userData.role.toUpperCase()}. Mengarahkan ke Dashboard yang sesuai...`);
+          // Note: App.tsx will handle the actual redirection based on profile.role
+        }
+      }
+
       setProfile(userData);
       localStorage.setItem('user_profile', JSON.stringify(userData));
+      toast.success('Login berhasil!');
 
       // Update last login and Log login event in parallel
       await Promise.all([
@@ -162,7 +175,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           action: 'LOGIN',
           performedBy: result.user.uid,
           timestamp: serverTimestamp(),
-          details: `User ${result.user.email} logged in with role ${userData.role}`
+          details: `User ${result.user.email} logged in with role ${userData.role} (intended: ${intendedRole || 'not specified'})`
         }).catch(e => console.warn("Failed to log login event:", e))
       ]);
     } catch (error: any) {
@@ -171,7 +184,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const emailRegister = async (emailOrId: string, password: string, name: string, role: Role) => {
+  const emailRegister = async (emailOrId: string, password: string, name: string, intendedRole?: Role) => {
     // Check if NIM already exists
     if (!emailOrId.includes('@')) {
       const q = query(collection(db, 'users'), where('nim', '==', emailOrId), where('deleted', '!=', true));
@@ -194,6 +207,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const result = await createUserWithEmailAndPassword(auth, email, password);
     const currentUser = result.user;
     
+    // Automatic Role Detection for Email Registration (Source of Truth)
+    let finalRole: Role = 'mahasiswa';
+    if (email.endsWith('@uin-malang.ac.id') && !email.endsWith('@student.uin-malang.ac.id')) {
+      finalRole = 'dosen';
+    }
+    if (email === "gama96954@gmail.com" || (intendedRole === 'admin' && email.includes('admin'))) {
+      finalRole = 'admin';
+    }
+
+    // Security warning if detected role doesn't match chosen portal
+    if (intendedRole && finalRole !== intendedRole) {
+      toast.error(`Terdeteksi sebagai ${finalRole.toUpperCase()}. Dialihkan ke portal yang sesuai.`);
+    }
+
     // Send verification email for manual registration
     try {
       const { sendEmailVerification } = await import('firebase/auth');
@@ -207,7 +234,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       uid: currentUser.uid,
       email: currentUser.email || email,
       name: name,
-      role: role,
+      role: finalRole,
       profileCompleted: false,
       notifPortal: true,
       notifEmail: true,
@@ -266,7 +293,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         updatedProfile.name && 
         updatedProfile.email && 
         updatedProfile.nim && 
-        updatedProfile.whatsapp &&
+        updatedProfile.whatsappNumber &&
         updatedProfile.role
       );
 
@@ -442,43 +469,96 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         currentUser = result.user;
       }
       
-      toast.success('Login berhasil! Menyiapkan dasbor...');
-      
       const docRef = doc(db, 'users', currentUser.uid);
       const docSnap = await getDoc(docRef);
       
+      let isNewUser = false;
+      let userData: UserProfile;
+
       if (!docSnap.exists()) {
-        // Store pending registration info instead of creating doc immediately
-        setPendingRegistration({
+        isNewUser = true;
+        // 1. Automatic Record Creation for New Users
+        const email = currentUser.email || '';
+        
+        // Initial role selection logic (Default to mahasiswa, detect dosen/admin via domain)
+        let finalRole: Role = 'mahasiswa';
+        if (email.endsWith('@uin-malang.ac.id') && !email.endsWith('@student.uin-malang.ac.id')) {
+          finalRole = 'dosen';
+        }
+        // Special case for specified admin
+        if (email === "gama96954@gmail.com") {
+          finalRole = 'admin';
+        }
+
+        // If newly registered, we can trust the intendedRole if it feels right,
+        // but domain detection is stronger. We'll use intendedRole as hint if not detected.
+        if (finalRole === 'mahasiswa' && intendedRole && intendedRole !== 'mahasiswa') {
+           // If they chose Staf/Dosen and domain doesn't strictly forbid it (non-campus email)
+           if (!email.endsWith('@student.uin-malang.ac.id')) {
+             finalRole = intendedRole;
+           }
+        }
+
+        userData = {
           uid: currentUser.uid,
-          email: currentUser.email || '',
-          name: currentUser.displayName || '',
+          email: email,
+          name: currentUser.displayName || 'User Baru',
+          role: finalRole,
+          nim: '', 
+          whatsappNumber: '', 
           photoURL: currentUser.photoURL || '',
-          role: intendedRole,
-        });
-        return { isNewUser: true };
+          profileCompleted: false, 
+          notifPortal: true,
+          notifEmail: true,
+          notifWhatsApp: false,
+          reminderMinutes: 30,
+          createdAt: serverTimestamp(),
+        };
+
+        await Promise.all([
+          setDoc(docRef, userData),
+          setDoc(doc(collection(db, 'audit_logs')), {
+            action: 'REGISTER_AUTO',
+            performedBy: currentUser.uid,
+            timestamp: serverTimestamp(),
+            details: `User ${email} automatically registered via Google Login as ${finalRole}`
+          }).catch(e => console.warn("Failed to log auto-reg event:", e))
+        ]);
+        
+        toast.success(`Berhasil terdaftar sebagai ${finalRole.toUpperCase()}!`);
+      } else {
+        userData = docSnap.data() as UserProfile;
+
+        // ROLE VALIDATION (Post-Login Context Check)
+        if (intendedRole && userData.role !== intendedRole) {
+          const isStaffAdminMismatch = (intendedRole === 'admin' && (userData.role === 'admin' || userData.role === 'staff'));
+          if (!isStaffAdminMismatch) {
+            toast.error(`Anda terdaftar sebagai ${userData.role.toUpperCase()}. Mengarahkan ke Dashboard yang sesuai...`);
+          }
+        } else {
+          toast.success('Login berhasil!');
+        }
+
+        // Update last login and Log login event in parallel
+        await Promise.all([
+          updateDoc(docRef, { 
+            lastLogin: serverTimestamp(),
+            updatedAt: serverTimestamp() 
+          }),
+          setDoc(doc(collection(db, 'audit_logs')), {
+            action: 'LOGIN',
+            performedBy: currentUser.uid,
+            timestamp: serverTimestamp(),
+            details: `User ${currentUser.email} logged in with role ${userData.role}`
+          }).catch(e => console.warn("Failed to log login event:", e))
+        ]);
       }
       
-      // Update last login and Log login event in parallel
-      const userData = docSnap.data() as UserProfile;
       setProfile(userData);
       localStorage.setItem('user_profile', JSON.stringify(userData));
-
-      await Promise.all([
-        updateDoc(docRef, { 
-          lastLogin: serverTimestamp(),
-          updatedAt: serverTimestamp() 
-        }),
-        setDoc(doc(collection(db, 'audit_logs')), {
-          action: 'LOGIN',
-          performedBy: currentUser.uid,
-          timestamp: serverTimestamp(),
-          details: `User ${currentUser.email} logged in with role ${userData.role}`
-        }).catch(e => console.warn("Failed to log login event:", e))
-      ]);
       
       setPendingRegistration(null);
-      return { isNewUser: false };
+      return { isNewUser };
     } catch (error: any) {
       console.error("Login failed", error);
       throw error;
@@ -499,7 +579,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     }
 
-    let finalRole: Role = data.role || 'mahasiswa';
+    // Initial role selection
+    let initialRole = data.role || 'mahasiswa';
+    let finalRole: Role = initialRole === 'staff' ? 'admin' : (initialRole as Role);
 
     // Domain-based role detection (Security)
     if (email.endsWith('@student.uin-malang.ac.id')) {
@@ -509,8 +591,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const mappingRef = doc(db, 'role_mappings', email);
         const mappingSnap = await getDoc(mappingRef);
         if (mappingSnap.exists()) {
-          finalRole = mappingSnap.data().role;
-        } else if (finalRole === 'admin' && email !== "gama96954@gmail.com") {
+          const mappedRole = mappingSnap.data().role;
+          // Unify staff and admin as requested
+          finalRole = (mappedRole === 'staff' || mappedRole === 'admin') ? 'admin' : mappedRole;
+        } else if (finalRole === ('admin' as any) && email !== "gama96954@gmail.com") {
           finalRole = email.endsWith('@uin-malang.ac.id') ? 'dosen' : 'mahasiswa';
         }
       } catch (e) {
@@ -524,7 +608,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       name: data.name || pendingRegistration.name,
       role: finalRole,
       nim: data.nim || '',
-      whatsapp: data.whatsapp || '',
+      whatsappNumber: data.whatsappNumber || (data as any).whatsapp || '',
       division: data.division || '',
       photoURL: pendingRegistration.photoURL,
       profileCompleted: true, // Since they are filling the form now

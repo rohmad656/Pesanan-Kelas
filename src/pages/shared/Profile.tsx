@@ -9,7 +9,7 @@ export default function Profile() {
   const [name, setName] = useState(profile?.name || '');
   const [email, setEmail] = useState(profile?.email || '');
   const [nim, setNim] = useState(profile?.nim || '');
-  const [whatsapp, setWhatsapp] = useState(profile?.whatsapp || '');
+  const [whatsappNumber, setWhatsappNumber] = useState(profile?.whatsappNumber || (profile as any)?.whatsapp || '');
   const [division, setDivision] = useState(profile?.division || '');
   const [newPassword, setNewPassword] = useState('');
   const [notifPortal, setNotifPortal] = useState(profile?.notifPortal ?? true);
@@ -23,7 +23,7 @@ export default function Profile() {
       setName(profile.name || '');
       setEmail(profile.email || '');
       setNim(profile.nim || '');
-      setWhatsapp(profile.whatsapp || '');
+      setWhatsappNumber(profile.whatsappNumber || (profile as any).whatsapp || '');
       setDivision(profile.division || '');
       setNotifPortal(profile.notifPortal ?? true);
       setNotifEmail(profile.notifEmail ?? true);
@@ -36,7 +36,7 @@ export default function Profile() {
     e.preventDefault();
     
     // WhatsApp validation: only numbers and + prefix
-    if (whatsapp && !whatsapp.match(/^\+?[0-9]{10,15}$/)) {
+    if (whatsappNumber && !whatsappNumber.match(/^\+?[0-9]{10,15}$/)) {
       toast.error('Format nomor WhatsApp tidak valid. Gunakan format +628...');
       return;
     }
@@ -48,7 +48,7 @@ export default function Profile() {
         name,
         email,
         nim,
-        whatsapp,
+        whatsappNumber,
         division,
         notifPortal,
         notifEmail,
@@ -139,7 +139,9 @@ export default function Profile() {
             </div>
           </div>
           <h2 className="text-xl font-bold text-slate-900 dark:text-[#F5F5F5]">{profile?.name}</h2>
-          <p className="text-slate-600 dark:text-[#B4B4C8] text-sm capitalize">{profile?.role}</p>
+          <p className="text-slate-600 dark:text-[#B4B4C8] text-sm capitalize">
+            {profile?.role === 'admin' || profile?.role === 'staff' ? 'Admin/Staff' : profile?.role}
+          </p>
           
           <div className="mt-6 w-full space-y-2 text-left">
             <div className="p-3 bg-slate-50 dark:bg-[#32324A] rounded-xl border border-slate-100 dark:border-[#3F3F5A]/30">
@@ -233,8 +235,8 @@ export default function Profile() {
                 <input 
                   type="tel" 
                   required
-                  value={whatsapp}
-                  onChange={(e) => setWhatsapp(e.target.value)}
+                  value={whatsappNumber}
+                  onChange={(e) => setWhatsappNumber(e.target.value)}
                   placeholder="+628..."
                   className="w-full px-4 py-2.5 bg-slate-50 dark:bg-[#1E1E2F] border border-slate-200 dark:border-[#3F3F5A]/30 rounded-xl focus:outline-none focus:border-brand-400 dark:border-brand-dark-accent text-slate-900 dark:text-[#F5F5F5]"
                 />

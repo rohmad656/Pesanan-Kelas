@@ -119,7 +119,7 @@ export default function Reports() {
               {issue.status === 'resolved' && (
                 <div className="pt-4 border-t border-slate-100 dark:border-[#3F3F5A]/30 flex items-center gap-2 text-xs text-green-600 dark:text-green-400 font-medium">
                   <CheckCircle2 className="w-4 h-4" />
-                  Masalah telah diselesaikan oleh staff sarpras.
+                  Masalah telah diselesaikan oleh tim admin.
                 </div>
               )}
             </div>

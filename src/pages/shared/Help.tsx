@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { HelpCircle, BookOpen, MessageCircle, Phone, Mail, User, AlertTriangle, Loader2 } from 'lucide-react';
+import { HelpCircle, BookOpen, MessageCircle, Phone, Mail, User, AlertTriangle, Loader2, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../lib/firebase';
@@ -27,6 +27,22 @@ export default function Help() {
     {
       q: "Apakah saya bisa memesan ruangan untuk kegiatan di luar jam kuliah?",
       a: "Bisa, namun memerlukan persetujuan khusus dan melampirkan surat izin kegiatan dari fakultas atau universitas saat mengisi form pemesanan."
+    }
+  ];
+
+  const troubleshooting = [
+    {
+      title: "UI Tidak Berubah Setelah Update",
+      causes: [
+        "Cache browser menyimpan versi lama aplikasi.",
+        "Dev server / Bundler tidak memuat ulang perubahan secara otomatis.",
+        "Komponen yang diubah tidak terpanggil di halaman yang sedang dibuka."
+      ],
+      solutions: [
+        "Lakukan 'Hard Reload' (Ctrl+Shift+R) untuk membersihkan cache browser.",
+        "Pastikan koneksi stabil agar aplikasi dapat menarik build terbaru.",
+        "Hapus cache aplikasi melalui pengaturan browser jika kendala berlanjut."
+      ]
     }
   ];
 
@@ -69,27 +85,68 @@ export default function Help() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="md:col-span-2 space-y-6">
           <h2 className="text-xl font-bold text-slate-900 dark:text-[#F5F5F5] flex items-center gap-2">
-            <BookOpen className="w-5 h-5 text-brand-700 dark:text-brand-dark-accent" /> Pertanyaan Umum (FAQ)
-          </h2>
-          <div className="space-y-4">
-            {faqs.map((faq, idx) => (
-              <div key={idx} className="bg-white dark:bg-[#27273A] dark:shadow-lg dark:shadow-black/20 border border-slate-200 dark:border-[#3F3F5A]/30 rounded-2xl p-5 hover:border-brand-300 dark:border-brand-dark-accent/30 transition-colors">
-                <h3 className="font-semibold text-slate-900 dark:text-[#F5F5F5] mb-2">{faq.q}</h3>
-                <p className="text-slate-600 dark:text-[#B4B4C8] text-sm leading-relaxed">{faq.a}</p>
-              </div>
-            ))}
+              <BookOpen className="w-5 h-5 text-brand-700 dark:text-brand-dark-accent" /> Pertanyaan Umum (FAQ)
+            </h2>
+            <div className="space-y-4">
+              {faqs.map((faq, idx) => (
+                <div key={idx} className="bg-white dark:bg-[#27273A] dark:shadow-lg dark:shadow-black/20 border border-slate-200 dark:border-[#3F3F5A]/30 rounded-2xl p-5 hover:border-brand-300 dark:border-brand-dark-accent/30 transition-colors">
+                  <h3 className="font-semibold text-slate-900 dark:text-[#F5F5F5] mb-2">{faq.q}</h3>
+                  <p className="text-slate-600 dark:text-[#B4B4C8] text-sm leading-relaxed">{faq.a}</p>
+                </div>
+              ))}
+            </div>
+
+            <h2 className="text-xl font-bold text-slate-900 dark:text-[#F5F5F5] flex items-center gap-2 pt-4">
+              <AlertTriangle className="w-5 h-5 text-orange-500" /> Kendala Teknis & Sinkronisasi
+            </h2>
+            <div className="space-y-4">
+              {troubleshooting.map((item, idx) => (
+                <div key={idx} className="bg-white dark:bg-[#27273A] dark:shadow-lg dark:shadow-black/20 border border-slate-200 dark:border-[#3F3F5A]/30 rounded-2xl overflow-hidden">
+                  <div className="p-5 bg-orange-500/5 border-b border-orange-500/10">
+                    <h3 className="font-bold text-slate-900 dark:text-[#F5F5F5]">{item.title}</h3>
+                  </div>
+                  <div className="p-5 grid grid-cols-1 sm:grid-cols-2 gap-6">
+                    <div className="space-y-3">
+                      <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400">Kemungkinan Penyebab</h4>
+                      <ul className="space-y-2">
+                        {item.causes.map((c, i) => (
+                          <li key={i} className="text-xs text-slate-600 dark:text-[#B4B4C8] flex gap-2">
+                            <span className="w-1.5 h-1.5 rounded-full bg-slate-300 dark:bg-slate-700 mt-1 shrink-0" />
+                            {c}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                    <div className="space-y-3">
+                      <h4 className="text-[10px] font-black uppercase tracking-widest text-orange-500">Solusi Rekomendasi</h4>
+                      <ul className="space-y-2">
+                        {item.solutions.map((s, i) => (
+                          <li key={i} className="text-xs text-slate-900 dark:text-[#F5F5F5] font-medium flex gap-2">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-green-500 mt-0.5 shrink-0" />
+                            {s}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                  <div className="px-5 py-3 bg-slate-50 dark:bg-[#32324A] text-[10px] text-slate-500 dark:text-[#B4B4C8] flex items-center justify-between">
+                    <span>💡 Tips: Rebuild & Cloud Sync biasanya menyelesaikan 99% masalah tampilan.</span>
+                    <span className="font-bold opacity-50 uppercase tracking-tighter italic">Update + Rebuild</span>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
 
         <div className="space-y-6">
           <h2 className="text-xl font-bold text-slate-900 dark:text-[#F5F5F5] flex items-center gap-2">
-            <Phone className="w-5 h-5 text-pink-600 dark:text-[#ffafd5]" /> Direktori Staff & Bantuan
+            <Phone className="w-5 h-5 text-pink-600 dark:text-[#ffafd5]" /> Direktori Admin/Staff & Bantuan
           </h2>
           
           <div className="space-y-4">
             {/* Staff Directory */}
             <div className="bg-white dark:bg-[#27273A] dark:shadow-lg dark:shadow-black/20 border border-slate-200 dark:border-[#3F3F5A]/30 rounded-2xl p-5 space-y-4">
-              <h3 className="font-semibold text-slate-900 dark:text-[#F5F5F5] text-sm border-b border-slate-200 dark:border-[#3F3F5A]/30 pb-2">Kontak Staff (WhatsApp)</h3>
+              <h3 className="font-semibold text-slate-900 dark:text-[#F5F5F5] text-sm border-b border-slate-200 dark:border-[#3F3F5A]/30 pb-2">Kontak Tim Admin (WhatsApp)</h3>
               <div className="space-y-4">
                 {loadingStaff ? (
                   <div className="flex items-center justify-center py-4">
@@ -109,11 +166,13 @@ export default function Help() {
                       </div>
                       <div className="flex-1 min-w-0">
                         <h4 className="font-semibold text-slate-900 dark:text-[#F5F5F5] text-sm truncate">{staff.name}</h4>
-                        <p className="text-slate-600 dark:text-[#B4B4C8] text-xs truncate capitalize">{staff.division || staff.role}</p>
+                        <p className="text-slate-600 dark:text-[#B4B4C8] text-xs truncate capitalize">
+                          {staff.division || (staff.role === 'admin' || staff.role === 'staff' ? 'Admin/Staff' : staff.role)}
+                        </p>
                       </div>
-                      {staff.whatsapp && (
+                      {(staff.whatsappNumber || staff.whatsapp) && (
                         <a 
-                          href={`https://wa.me/${staff.whatsapp.replace(/\+/g, '')}`} 
+                          href={`https://wa.me/${(staff.whatsappNumber || staff.whatsapp).replace(/\+/g, '')}`} 
                           target="_blank" 
                           rel="noopener noreferrer"
                           className="p-2 bg-[#25D366]/10 text-[#25D366] rounded-lg hover:bg-[#25D366]/20 transition-colors shrink-0"
@@ -134,7 +193,7 @@ export default function Help() {
                 <AlertTriangle className="w-4 h-4" /> Laporkan Masalah Ruangan
               </h3>
               <p className="text-slate-600 dark:text-[#B4B4C8] text-xs leading-relaxed mb-4">
-                Jika Anda menemukan kerusakan fasilitas (AC mati, proyektor rusak, dll) saat menggunakan ruangan, segera laporkan ke staff terkait.
+                Jika Anda menemukan kerusakan fasilitas (AC mati, proyektor rusak, dll) saat menggunakan ruangan, segera laporkan ke tim admin.
               </p>
               <button 
                 onClick={() => setIsReportModalOpen(true)}
@@ -150,9 +209,9 @@ export default function Help() {
                 <div className="w-10 h-10 rounded-xl bg-brand-100 dark:bg-[#32324A] flex items-center justify-center shrink-0">
                   <Mail className="w-5 h-5 text-pink-600 dark:text-[#ffafd5]" />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <h4 className="font-semibold text-slate-900 dark:text-[#F5F5F5] text-sm">Email Support Umum</h4>
-                  <p className="text-slate-600 dark:text-[#B4B4C8] text-xs mt-1">support@campusbook.ac.id</p>
+                  <p className="text-slate-600 dark:text-[#B4B4C8] text-xs mt-1 break-words overflow-wrap-anywhere whitespace-normal">support@campusbook.ac.id</p>
                 </div>
               </div>
             </div>

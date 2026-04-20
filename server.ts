@@ -198,32 +198,157 @@ async function startServer() {
       const targetUserData = targetUserDoc.data();
 
       // Delete from Auth
-      await admin.auth().deleteUser(uid);
+      try {
+        await admin.auth().deleteUser(uid);
+      } catch (authError: any) {
+        // If user already deleted from Auth, we continue with Firestore cleanup
+        if (authError.code !== 'auth/user-not-found') throw authError;
+      }
 
-      // Soft delete in Firestore
-      await db.collection("users").doc(uid).update({
-        deleted: true,
-        deletedAt: admin.firestore.FieldValue.serverTimestamp(),
-        deletedBy: decodedToken.uid
-      });
+      // Hard delete in Firestore as requested
+      await db.collection("users").doc(uid).delete();
 
-      // Log the action
+      // Log the action (Audit log is kept even if profile is gone)
       await db.collection("audit_logs").add({
-        action: "DELETE_USER",
+        action: "DELETE_USER_HARD",
         targetUid: uid,
+        targetEmail: targetUserData?.email || "Unknown",
         performedBy: decodedToken.uid,
         timestamp: admin.firestore.FieldValue.serverTimestamp(),
-        details: `User ${targetUserData?.email || uid} soft-deleted by ${userData.role} ${decodedToken.uid}`
+        details: `Account ${targetUserData?.email || uid} permanently deleted from Auth & Firestore by ${userData.role} ${decodedToken.uid}`
       });
 
-      // Send a notification if target user can still see (unlikely if deleted, but for audit)
-      // Actually, standard is to email them.
-      console.log(`[EMAIL] To: ${targetUserData?.email} | Subject: Akun Dinonaktifkan | Body: Akun Anda telah dinonaktifkan oleh administrator.`);
+      // Simulation of email notice (Optional)
+      console.log(`[EMAIL NOTICE] Account ${targetUserData?.email} has been permanently removed by administrative action.`);
 
-      res.json({ success: true });
+      res.json({ success: true, message: "User permanently deleted" });
     } catch (error: any) {
       console.error("Error deleting user:", error);
       res.status(500).json({ error: error.message });
+    }
+  });
+
+  // User Management Endpoints
+  app.get("/api/admin/users", async (req, res) => {
+    const { adminToken } = req.query;
+    if (!adminToken || typeof adminToken !== 'string') {
+      return res.status(401).json({ error: "Missing authorization token" });
+    }
+
+    try {
+      const decodedToken = await admin.auth().verifyIdToken(adminToken);
+      const db = getDb();
+      
+      // Verify requester is admin/staff
+      const requesterDoc = await db.collection("users").doc(decodedToken.uid).get();
+      const requesterData = requesterDoc.data();
+
+      if (!requesterData || (requesterData.role !== "admin" && requesterData.role !== "staff")) {
+        return res.status(403).json({ error: "Unauthorized: Access denied" });
+      }
+
+      // 1. Fetch from Auth (Admin SDK)
+      const authUsersResult = await admin.auth().listUsers();
+      const authUsers = authUsersResult.users;
+
+      // 2. Fetch from Firestore
+      const usersSnap = await db.collection("users").where("deleted", "!=", true).get();
+      const firestoreUsersMap: Record<string, any> = {};
+      usersSnap.docs.forEach(doc => {
+        firestoreUsersMap[doc.id] = doc.data();
+      });
+
+      // 3. Merge
+      const mergedUsers = authUsers
+        .filter(u => !firestoreUsersMap[u.uid]?.deleted) // Skip soft-deleted
+        .map(u => {
+          const profile = firestoreUsersMap[u.uid] || {};
+          return {
+            id: u.uid,
+            uid: u.uid,
+            email: u.email,
+            name: profile.name || u.displayName || 'No Name',
+            role: profile.role || u.customClaims?.role || 'mahasiswa',
+            photoURL: profile.photoURL || u.photoURL,
+            lastLogin: u.metadata.lastSignInTime,
+            createdAt: profile.createdAt || u.metadata.creationTime,
+            nim: profile.nim,
+            whatsappNumber: profile.whatsappNumber || profile.whatsapp,
+            division: profile.division,
+            profileCompleted: profile.profileCompleted || false
+          };
+        });
+
+      res.json({ users: mergedUsers });
+    } catch (error: any) {
+      console.error("Error fetching merged users:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/admin/update-user-role", async (req, res) => {
+    const { targetUid, newRole, adminToken } = req.body;
+    if (!targetUid || !newRole || !adminToken) {
+      return res.status(400).json({ error: "Missing required fields" });
+    }
+
+    try {
+      const decodedToken = await admin.auth().verifyIdToken(adminToken);
+      const db = getDb();
+
+      // Verify requester is admin
+      const requesterDoc = await db.collection("users").doc(decodedToken.uid).get();
+      const requesterData = requesterDoc.data();
+
+      if (!requesterData || requesterData.role !== "admin") {
+        return res.status(403).json({ error: "Only admins can change roles" });
+      }
+
+      // Update Firestore
+      await db.collection("users").doc(targetUid).update({
+        role: newRole,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+
+      // Update Auth Custom Claims for security rules performance
+      await admin.auth().setCustomUserClaims(targetUid, { role: newRole });
+
+      // Log action
+      await db.collection("audit_logs").add({
+        action: "UPDATE_USER_ROLE",
+        targetUid,
+        performedBy: decodedToken.uid,
+        timestamp: admin.firestore.FieldValue.serverTimestamp(),
+        details: `Role updated to ${newRole} for user ${targetUid}`
+      });
+
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Error updating user role:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // NIM to Email Lookup (For login support)
+  app.get("/api/auth/lookup-email", async (req, res) => {
+    const { nim } = req.query;
+    if (!nim || typeof nim !== 'string') {
+      return res.status(400).json({ error: "NIM is required" });
+    }
+
+    try {
+      const db = getDb();
+      const q = await db.collection("users").where("nim", "==", nim).where("deleted", "!=", true).limit(1).get();
+      
+      if (q.empty) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      const userData = q.docs[0].data();
+      res.json({ email: userData.email });
+    } catch (error: any) {
+      console.error("Lookup Email Error:", error);
+      res.status(500).json({ error: "Internal server error" });
     }
   });
 

@@ -11,6 +11,7 @@
         "role": { "type": "string", "enum": ["mahasiswa", "dosen", "staff", "admin"] },
         "nim": { "type": "string", "description": "NIM or NIDN" },
         "whatsapp": { "type": "string" },
+        "whatsappNumber": { "type": "string" },
         "division": { "type": "string" },
         "photoURL": { "type": "string" },
         "profileCompleted": { "type": "boolean" },

@@ -102,17 +102,21 @@ service cloud.firestore {
 
     function isAdmin() {
       return isAuthenticated() && (
-        request.auth.token.email == "gama96954@gmail.com" ||
+        request.auth.token.get('role', 'user') == 'admin' ||
+        request.auth.token.email in ["gama96954@gmail.com", "mirejrohmad@gmail.com"] ||
         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
-         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'user') == 'admin')
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'user') == 'admin' &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('deleted', false) == false)
       );
     }
 
     function isStaff() {
       return isAuthenticated() && (
         isAdmin() ||
+        request.auth.token.get('role', 'user') == 'staff' ||
         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
-         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'user') == 'staff')
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'user') == 'staff' &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('deleted', false) == false)
       );
     }
 
@@ -136,7 +140,7 @@ service cloud.firestore {
     // Domain Validators
     // ===============================================================
     function isValidUser(data) {
-      return hasOnlyAllowedFields(['uid', 'email', 'name', 'role', 'nim', 'identifier', 'whatsapp', 'division', 'photoURL', 'profileCompleted', 'notifPortal', 'notifEmail', 'notifWhatsApp', 'reminderMinutes', 'deleted', 'deletedAt', 'deletedBy', 'createdAt', 'updatedAt', 'lastLogin']) &&
+      return hasOnlyAllowedFields(['uid', 'email', 'name', 'role', 'nim', 'identifier', 'whatsapp', 'whatsappNumber', 'division', 'photoURL', 'profileCompleted', 'notifPortal', 'notifEmail', 'notifWhatsApp', 'reminderMinutes', 'deleted', 'deletedAt', 'deletedBy', 'createdAt', 'updatedAt', 'lastLogin']) &&
              hasRequiredFields(['uid', 'email', 'name', 'role', 'createdAt']) &&
              data.uid is string && data.uid.size() > 0 && data.uid.size() < 128 &&
              data.email is string && isValidEmail(data.email) && data.email.size() < 100 &&
@@ -145,6 +149,7 @@ service cloud.firestore {
              (!('nim' in data) || (data.nim is string && data.nim.size() < 50)) &&
              (!('identifier' in data) || (data.identifier is string && data.identifier.size() < 50)) &&
              (!('whatsapp' in data) || (data.whatsapp is string && data.whatsapp.size() < 20)) &&
+             (!('whatsappNumber' in data) || (data.whatsappNumber is string && data.whatsappNumber.size() < 20)) &&
              (!('division' in data) || (data.division is string && data.division.size() < 100)) &&
              (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() < 1000)) &&
              (!('profileCompleted' in data) || data.profileCompleted is bool) &&
@@ -243,7 +248,8 @@ service cloud.firestore {
     }
 
     match /users/{userId} {
-      allow read: if isStaff() || isOwner(userId);
+      allow read: if isOwner(userId) || isStaff();
+      allow list: if isStaff();
       allow create: if isAuthenticated() && isOwner(userId) && isValidUser(request.resource.data) &&
                     request.resource.data.uid == request.auth.uid &&
                     request.resource.data.createdAt == request.time &&

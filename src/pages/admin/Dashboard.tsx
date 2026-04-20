@@ -5,6 +5,7 @@ import { collection, query, where, onSnapshot, doc, updateDoc, writeBatch, serve
 import { db, handleFirestoreError, OperationType } from '../../lib/firebase';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
+import BaseModal from '../../components/BaseModal';
 
 export default function AdminDashboard() {
   const { profile } = useAuth();
@@ -427,63 +428,52 @@ export default function AdminDashboard() {
       </div>
 
       {/* Rejection Modal */}
-      <AnimatePresence>
+      <BaseModal
+        isOpen={!!rejectingBooking}
+        onClose={() => setRejectingBooking(null)}
+        title="Tolak Pesanan"
+        description="Berikan alasan penolakan untuk pemesan agar mereka mendapatkan kejelasan."
+        className="max-w-md"
+      >
         {rejectingBooking && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4">
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.9, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.9, y: 20 }}
-              className="bg-white dark:bg-[#27273A] w-full max-w-md rounded-2xl shadow-2xl border border-slate-200 dark:border-[#3F3F5A]/50 overflow-hidden p-6"
-            >
-              <div className="flex items-center gap-3 mb-6">
-                <div className="w-10 h-10 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
-                  <XCircle className="w-6 h-6 text-red-600 dark:text-red-400" />
-                </div>
-                <div>
-                  <h3 className="text-lg font-bold text-slate-900 dark:text-[#F5F5F5]">Tolak Pesanan</h3>
-                  <p className="text-xs text-slate-500 dark:text-[#B4B4C8]">Berikan alasan penolakan untuk pemesan.</p>
-                </div>
-              </div>
+          <div className="space-y-6">
+            <div className="p-4 bg-slate-50 dark:bg-[#32324A] rounded-2xl border border-slate-100 dark:border-[#3F3F5A]/30">
+              <span className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Pesanan</span>
+              <p className="text-sm font-bold text-slate-700 dark:text-[#F5F5F5]">
+                {rejectingBooking.userName} — {rejectingBooking.roomName || rejectingBooking.roomId}
+              </p>
+            </div>
 
-              <div className="space-y-4 mb-6">
-                <div className="p-3 bg-slate-50 dark:bg-[#32324A] rounded-xl border border-slate-100 dark:border-[#3F3F5A]/30">
-                  <p className="text-xs font-bold text-slate-400 uppercase mb-1">Pesanan</p>
-                  <p className="text-sm font-medium text-slate-700 dark:text-[#F5F5F5]">{rejectingBooking.userName} - {rejectingBooking.roomName || rejectingBooking.roomId}</p>
-                </div>
+            <div className="space-y-2">
+              <label className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-[#B4B4C8]">Alasan Penolakan</label>
+              <textarea
+                autoFocus
+                value={rejectionReason}
+                onChange={(e) => setRejectionReason(e.target.value)}
+                placeholder="Contoh: Bentrok jadwal / Ruangan tidak tersedia..."
+                className="w-full p-4 bg-slate-50 dark:bg-[#32324A] border border-slate-200 dark:border-[#3F3F5A]/50 rounded-2xl focus:outline-none focus:ring-2 focus:ring-red-500 text-sm min-h-[120px] resize-none"
+              />
+            </div>
 
-                <div>
-                  <label className="block text-xs font-bold text-slate-400 uppercase mb-2">Alasan Penolakan</label>
-                  <textarea
-                    autoFocus
-                    value={rejectionReason}
-                    onChange={(e) => setRejectionReason(e.target.value)}
-                    placeholder="Contoh: Bentrok jadwal / Ruangan tidak tersedia..."
-                    className="w-full p-3 bg-slate-50 dark:bg-[#2D2D44] border border-slate-200 dark:border-[#3F3F5A]/30 rounded-xl focus:outline-none focus:border-brand-400 dark:focus:border-brand-dark-accent text-sm min-h-[100px] resize-none"
-                  />
-                </div>
-              </div>
-
-              <div className="flex gap-3">
-                <button 
-                  onClick={() => setRejectingBooking(null)}
-                  disabled={isRejecting}
-                  className="flex-1 py-2.5 bg-transparent border border-slate-200 dark:border-[#3F3F5A]/30 text-slate-600 dark:text-[#B4B4C8] font-bold rounded-xl hover:bg-slate-50 dark:hover:bg-[#32324A] transition-all disabled:opacity-50"
-                >
-                  Batal
-                </button>
-                <button 
-                  onClick={handleReject}
-                  disabled={isRejecting || !rejectionReason.trim()}
-                  className="flex-1 py-2.5 bg-red-500 text-white font-bold rounded-xl hover:bg-red-600 shadow-lg shadow-red-500/20 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
-                >
-                  {isRejecting ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Tolak Pesanan'}
-                </button>
-              </div>
-            </motion.div>
+            <div className="flex gap-3 pt-2">
+              <button 
+                onClick={() => setRejectingBooking(null)}
+                disabled={isRejecting}
+                className="flex-1 py-3.5 bg-slate-100 dark:bg-[#32324A] text-slate-600 dark:text-[#B4B4C8] font-bold rounded-2xl hover:bg-slate-200 dark:hover:bg-[#3F3F5A] transition-all disabled:opacity-50"
+              >
+                Batal
+              </button>
+              <button 
+                onClick={handleReject}
+                disabled={isRejecting || !rejectionReason.trim()}
+                className="flex-1 py-3.5 bg-red-600 text-white font-bold rounded-2xl hover:bg-red-700 shadow-lg shadow-red-500/20 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                {isRejecting ? <><Loader2 className="w-4 h-4 animate-spin" /> Memproses...</> : 'Tolak Pesanan'}
+              </button>
+            </div>
           </div>
         )}
-      </AnimatePresence>
+      </BaseModal>
     </div>
   );
 }

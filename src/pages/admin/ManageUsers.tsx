@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, onSnapshot, doc, updateDoc, where, serverTimestamp, setDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType, auth } from '../../lib/firebase';
-import { Filter, Trash2, AlertCircle } from 'lucide-react';
+import { Filter, Trash2, Users, Search, ChevronLeft, ChevronRight, AlertTriangle, X } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 import toast from 'react-hot-toast';
+
+import BaseModal from '../../components/BaseModal';
 
 const roleOrder: Record<string, number> = {
   admin: 1,
@@ -11,96 +13,132 @@ const roleOrder: Record<string, number> = {
   mahasiswa: 4
 };
 
+const USERS_PER_PAGE = 10;
+
 export default function ManageUsers() {
   const [users, setUsers] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
   const [roleFilter, setRoleFilter] = useState<string>('semua');
+  const [statusFilter, setStatusFilter] = useState<string>('semua');
+  const [searchQuery, setSearchQuery] = useState('');
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [isUpdatingRole, setIsUpdatingRole] = useState<string | null>(null);
+  const [userToDelete, setUserToDelete] = useState<any | null>(null);
 
-  useEffect(() => {
-    // Filter out soft-deleted users
-    const q = query(collection(db, 'users'), where('deleted', '!=', true));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const usersData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      
-      setUsers(usersData);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.GET, 'users');
-    });
-
-    return () => unsubscribe();
-  }, []);
-
-  const handleRoleChange = async (user: any, newRole: string) => {
+  const fetchUsers = async () => {
+    setLoading(true);
     try {
-      await updateDoc(doc(db, 'users', user.id), { 
-        role: newRole,
-        updatedAt: serverTimestamp()
-      });
-      
-      // Notify user about role change
-      try {
-        await setDoc(doc(collection(db, 'notifications')), {
-          userId: user.id,
-          title: 'Pembaruan Peran',
-          message: `Peran akun Anda telah diubah menjadi ${newRole.toUpperCase()}.`,
-          type: 'info',
-          isRead: false,
-          createdAt: serverTimestamp()
-        });
-      } catch (e) {
-        console.warn("Failed to send notification:", e);
-      }
+      const adminToken = await auth.currentUser?.getIdToken();
+      if (!adminToken) throw new Error('Sesi tidak valid');
 
-      toast.success(`Peran ${user.name} berhasil diubah menjadi ${newRole}`);
-    } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, `users/${user.id}`);
+      const response = await fetch(`/api/admin/users?adminToken=${adminToken}`);
+      const result = await response.json();
+
+      if (!response.ok) throw new Error(result.error);
+      
+      setUsers(result.users || []);
+    } catch (error: any) {
+      console.error('Error fetching users:', error);
+      toast.error('Gagal memuat data pengguna dari server.');
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleDeleteUser = async (user: any) => {
-    if (!window.confirm(`Apakah Anda yakin ingin menghapus akun ${user.name}? Tindakan ini akan menonaktifkan akun.`)) {
-      return;
-    }
+  useEffect(() => {
+    fetchUsers();
+  }, []);
 
-    setIsDeleting(user.id);
+  const handleRoleChange = async (user: any, newRole: string) => {
+    setIsUpdatingRole(user.id);
+    try {
+      const adminToken = await auth.currentUser?.getIdToken();
+      if (!adminToken) throw new Error('Sesi tidak valid');
+
+      const response = await fetch('/api/admin/update-user-role', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targetUid: user.id, newRole, adminToken }),
+      });
+
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error);
+
+      // Locally update state
+      setUsers(prev => prev.map(u => u.id === user.id ? { ...u, role: newRole } : u));
+      toast.success(`Peran ${user.name} berhasil diubah menjadi ${newRole.toUpperCase()} (Custom Claims Synced)`);
+    } catch (error: any) {
+      console.error('Error updating role:', error);
+      toast.error(error.message || 'Gagal mengubah peran');
+    } finally {
+      setIsUpdatingRole(null);
+    }
+  };
+
+  const handleDeleteUser = async () => {
+    if (!userToDelete) return;
+
+    setIsDeleting(userToDelete.id);
     try {
       const adminToken = await auth.currentUser?.getIdToken();
       if (!adminToken) throw new Error('Sesi tidak valid');
 
       const response = await fetch('/api/admin/delete-user', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ uid: user.id, adminToken }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ uid: userToDelete.id, adminToken }),
       });
 
       const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Gagal menghapus pengguna');
 
-      if (!response.ok) {
-        throw new Error(result.error || 'Gagal menghapus pengguna');
-      }
-
-      // Notify and Audit locally (Server also does this but we reinforce for UI)
-      toast.success('Pengguna berhasil dinonaktifkan (Soft Delete)');
+      setUsers(prev => prev.filter(u => u.id !== userToDelete.id));
+      toast.success('Pengguna berhasil dihapus secara permanen dari Auth & Firestore');
+      setUserToDelete(null);
     } catch (error: any) {
       console.error('Error deleting user:', error);
       toast.error(error.message || 'Gagal menghapus pengguna');
     } finally {
-      setIsDeleting(user.id === isDeleting ? null : isDeleting);
+      setIsDeleting(null);
     }
   };
 
   const filteredAndSortedUsers = users
-    .filter(user => roleFilter === 'semua' || user.role === roleFilter)
+    .filter(user => {
+      // Role filter
+      const matchesRole = roleFilter === 'semua' || 
+                         (roleFilter === 'admin' ? (user.role === 'admin' || user.role === 'staff') : user.role === roleFilter);
+      
+      // Status filter
+      const isActive = !!user.lastLogin;
+      const matchesStatus = statusFilter === 'semua' || 
+                           (statusFilter === 'aktif' ? isActive : !isActive);
+
+      // Search filter
+      const matchesSearch = searchQuery === '' || 
+                           user.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                           user.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                           user.nim?.includes(searchQuery);
+
+      return matchesRole && matchesStatus && matchesSearch;
+    })
     .sort((a, b) => {
       const orderA = roleOrder[a.role] || 99;
       const orderB = roleOrder[b.role] || 99;
-      if (orderA !== orderB) {
-        return orderA - orderB;
-      }
+      if (orderA !== orderB) return orderA - orderB;
       return (a.name || '').localeCompare(b.name || '');
     });
+
+  const totalPages = Math.ceil(filteredAndSortedUsers.length / USERS_PER_PAGE);
+  const currentUsers = filteredAndSortedUsers.slice(
+    (currentPage - 1) * USERS_PER_PAGE,
+    currentPage * USERS_PER_PAGE
+  );
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [roleFilter, statusFilter, searchQuery]);
 
   return (
     <div className="animate-fade-in space-y-6">
@@ -110,7 +148,39 @@ export default function ManageUsers() {
           <p className="text-slate-600 dark:text-[#B4B4C8] text-sm">Kelola akun Mahasiswa, Dosen, dan Admin.</p>
         </div>
         
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="bg-white dark:bg-[#27273A] dark:shadow-md border border-slate-200 dark:border-[#3F3F5A]/50 rounded-xl px-4 py-2 flex items-center md:flex-row gap-3">
+            <Users className="w-5 h-5 text-brand-600 dark:text-brand-dark-accent" />
+            <div className="flex flex-col">
+              <span className="text-[10px] uppercase font-bold text-slate-400">Total Pengguna</span>
+              <span className="text-lg font-extrabold text-slate-900 dark:text-[#F5F5F5] leading-none">{users.length}</span>
+            </div>
+          </div>
+
+          <div className="relative group">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input 
+              type="text"
+              placeholder="Cari nama, email, NIM..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10 pr-4 py-2 bg-white dark:bg-[#27273A] border border-slate-200 dark:border-[#3F3F5A]/50 rounded-xl text-sm focus:outline-none focus:border-brand-400 text-slate-900 dark:text-[#F5F5F5] w-64"
+            />
+          </div>
+
+          <div className="flex items-center gap-2 bg-white dark:bg-[#27273A] dark:shadow-lg dark:shadow-black/20 border border-slate-200 dark:border-[#3F3F5A]/50 rounded-xl px-3 py-2">
+            <Filter className="w-4 h-4 text-slate-500 dark:text-[#B4B4C8]" />
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="bg-transparent text-sm text-slate-900 dark:text-[#F5F5F5] focus:outline-none"
+            >
+              <option value="semua">Semua Status</option>
+              <option value="aktif">Status: AKTIF</option>
+              <option value="nonaktif">Status: NONAKTIF</option>
+            </select>
+          </div>
+
           <div className="flex items-center gap-2 bg-white dark:bg-[#27273A] dark:shadow-lg dark:shadow-black/20 border border-slate-200 dark:border-[#3F3F5A]/50 rounded-xl px-3 py-2">
             <Filter className="w-4 h-4 text-slate-500 dark:text-[#B4B4C8]" />
             <select
@@ -121,7 +191,7 @@ export default function ManageUsers() {
               <option value="semua">Semua Peran</option>
               <option value="mahasiswa">Mahasiswa</option>
               <option value="dosen">Dosen</option>
-              <option value="admin">Admin</option>
+              <option value="admin">Admin/Staff</option>
             </select>
           </div>
         </div>
@@ -137,13 +207,22 @@ export default function ManageUsers() {
                 <th className="px-6 py-4 font-semibold">NIM / NIP</th>
                 <th className="px-6 py-4 font-semibold">WhatsApp</th>
                 <th className="px-6 py-4 font-semibold">Peran (Role)</th>
-                <th className="px-6 py-4 font-semibold">Login Terakhir</th>
+                <th className="px-6 py-4 font-semibold">Status</th>
                 <th className="px-6 py-4 font-semibold text-center">Aksi</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[#603770]/30">
-              {filteredAndSortedUsers.map(user => (
-                <tr key={user.id} className="hover:bg-slate-50 dark:hover:bg-[#32324A] transition-colors">
+            <tbody className="divide-y divide-slate-100 dark:divide-[#3F3F5A]/30">
+              {loading ? (
+                <tr>
+                  <td colSpan={7} className="px-6 py-12 text-center">
+                    <div className="flex flex-col items-center gap-3">
+                      <div className="w-8 h-8 border-4 border-brand-400 border-t-transparent rounded-full animate-spin" />
+                      <p className="text-sm">Menghubungkan ke Auth & Firestore...</p>
+                    </div>
+                  </td>
+                </tr>
+              ) : currentUsers.map(user => (
+                <tr key={user.id} className="hover:bg-slate-50/50 dark:hover:bg-[#32324A]/50 transition-colors">
                   <td className="px-6 py-4 font-medium text-slate-900 dark:text-[#F5F5F5]">
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 rounded-full bg-brand-100 dark:bg-[#32324A] flex items-center justify-center font-bold text-xs overflow-hidden shrink-0">
@@ -158,20 +237,18 @@ export default function ManageUsers() {
                           (user.name || '?').charAt(0).toUpperCase()
                         )}
                       </div>
-                      <div>
-                        {user.name}
+                      <div className="min-w-0">
+                        <p className="truncate">{user.name}</p>
                         {user.division && (
-                          <p className="text-[10px] text-slate-500 font-normal">{user.division}</p>
+                          <p className="text-[10px] text-slate-500 font-normal truncate uppercase tracking-tighter">{user.division}</p>
                         )}
                       </div>
                     </div>
                   </td>
-                  <td className="px-6 py-4">
-                    <div className="text-sm">{user.email}</div>
-                  </td>
+                  <td className="px-6 py-4 text-sm truncate max-w-[200px]">{user.email}</td>
                   <td className="px-6 py-4">
                     {user.nim ? (
-                      <span className="text-sm font-mono bg-slate-100 dark:bg-[#1E1E2F] px-2 py-1 rounded text-slate-700 dark:text-[#F5F5F5]">
+                      <span className="text-xs font-mono bg-slate-100 dark:bg-[#1E1E2F] px-2 py-1 rounded text-slate-700 dark:text-[#F5F5F5]">
                         {user.nim}
                       </span>
                     ) : (
@@ -179,14 +256,14 @@ export default function ManageUsers() {
                     )}
                   </td>
                   <td className="px-6 py-4">
-                    {user.whatsapp ? (
+                    {(user.whatsappNumber || user.whatsapp) ? (
                       <a 
-                        href={`https://wa.me/${user.whatsapp.replace(/\+/g, '')}`} 
+                        href={`https://wa.me/${(user.whatsappNumber || user.whatsapp).replace(/\+/g, '')}`} 
                         target="_blank" 
                         rel="noopener noreferrer"
-                        className="text-green-600 dark:text-green-400 hover:underline flex items-center gap-1"
+                        className="text-green-600 dark:text-green-400 hover:underline text-sm"
                       >
-                        {user.whatsapp}
+                        {user.whatsappNumber || user.whatsapp}
                       </a>
                     ) : (
                       <span className="text-slate-400 italic text-xs">Belum diisi</span>
@@ -194,51 +271,157 @@ export default function ManageUsers() {
                   </td>
                   <td className="px-6 py-4">
                     <select 
-                      value={user.role}
+                      disabled={isUpdatingRole === user.id}
+                      value={user.role === 'staff' ? 'admin' : user.role}
                       onChange={(e) => handleRoleChange(user, e.target.value)}
-                      className="px-3 py-1.5 bg-brand-100 dark:bg-[#32324A] border border-slate-200 dark:border-[#3F3F5A]/50 rounded-lg text-slate-900 dark:text-[#F5F5F5] focus:outline-none focus:border-brand-400 dark:border-brand-dark-accent capitalize"
+                      className="px-3 py-1.5 bg-slate-100 dark:bg-[#32324A] border border-slate-200 dark:border-[#3F3F5A]/50 rounded-xl text-xs text-slate-900 dark:text-[#F5F5F5] focus:outline-none focus:border-brand-400 dark:border-brand-dark-accent capitalize disabled:opacity-50"
                     >
                       <option value="mahasiswa">Mahasiswa</option>
                       <option value="dosen">Dosen</option>
-                      <option value="staff">Staff</option>
-                      <option value="admin">Admin</option>
+                      <option value="admin">Admin/Staff</option>
                     </select>
                   </td>
-                  <td className="px-6 py-4">
-                    <div className="text-xs text-slate-500 whitespace-nowrap">
-                      {user.lastLogin ? new Date(user.lastLogin.toMillis()).toLocaleString('id-ID', {
-                        dateStyle: 'medium',
-                        timeStyle: 'short'
-                      }) : <span className="italic text-slate-400">Belum pernah login</span>}
-                    </div>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    {user.lastLogin ? (
+                      <div className="flex flex-col">
+                        <div className="flex items-center gap-1.5 mb-0.5">
+                          <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
+                          <span className="text-[10px] font-bold text-green-600 dark:text-green-500 uppercase tracking-wider">Aktif</span>
+                        </div>
+                        <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">
+                          {new Date(user.lastLogin.toMillis?.() || user.lastLogin).toLocaleDateString('id-ID', {
+                            day: '2-digit',
+                            month: 'short',
+                            year: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })}
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col">
+                        <div className="flex items-center gap-1.5 mb-0.5">
+                          <span className="w-1.5 h-1.5 bg-slate-300 dark:bg-slate-600 rounded-full" />
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Nonaktif</span>
+                        </div>
+                        <span className="text-[10px] text-slate-400 italic">Belum pernah login</span>
+                      </div>
+                    )}
                   </td>
                   <td className="px-6 py-4 text-center">
                     {auth.currentUser?.uid !== user.id && (
                       <button
-                        onClick={() => handleDeleteUser(user)}
+                        onClick={() => setUserToDelete(user)}
                         disabled={isDeleting === user.id}
                         className="p-2 text-red-500 hover:bg-red-500/10 rounded-lg transition-colors disabled:opacity-50"
-                        title="Hapus Akun"
+                        title="Hapus Akun secara Permanen"
                       >
-                        {isDeleting === user.id ? (
-                          <div className="w-5 h-5 border-2 border-red-500 border-t-transparent rounded-full animate-spin" />
-                        ) : (
-                          <Trash2 className="w-5 h-5" />
-                        )}
+                        <Trash2 className="w-5 h-5" />
                       </button>
                     )}
                   </td>
                 </tr>
               ))}
-              {filteredAndSortedUsers.length === 0 && (
+              {!loading && filteredAndSortedUsers.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-6 py-8 text-center">Belum ada data pengguna.</td>
+                  <td colSpan={7} className="px-6 py-12 text-center text-slate-400 italic">Pencarian tidak ditemukan.</td>
                 </tr>
               )}
             </tbody>
           </table>
         </div>
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="px-6 py-4 bg-slate-50/50 dark:bg-black/10 border-t border-slate-100 dark:border-[#3F3F5A]/30 flex items-center justify-between">
+            <p className="text-xs text-slate-500">
+              Menampilkan <span className="font-bold">{(currentPage - 1) * USERS_PER_PAGE + 1}</span> - <span className="font-bold">{Math.min(currentPage * USERS_PER_PAGE, filteredAndSortedUsers.length)}</span> dari <span className="font-bold">{filteredAndSortedUsers.length}</span> pengguna
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                disabled={currentPage === 1}
+                className="p-2 border border-slate-200 dark:border-[#3F3F5A]/30 rounded-lg hover:bg-white dark:hover:bg-[#32324A] disabled:opacity-30 transition-colors"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <div className="flex items-center gap-1">
+                {[...Array(totalPages)].map((_, i) => (
+                  <button
+                    key={i}
+                    onClick={() => setCurrentPage(i + 1)}
+                    className={`w-8 h-8 rounded-lg text-xs font-bold transition-all ${
+                      currentPage === i + 1 
+                        ? 'bg-brand-600 text-white shadow-md' 
+                        : 'hover:bg-slate-200 dark:hover:bg-[#32324A] text-slate-600 dark:text-[#B4B4C8]'
+                    }`}
+                  >
+                    {i + 1}
+                  </button>
+                ))}
+              </div>
+              <button
+                onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                disabled={currentPage === totalPages}
+                className="p-2 border border-slate-200 dark:border-[#3F3F5A]/30 rounded-lg hover:bg-white dark:hover:bg-[#32324A] disabled:opacity-30 transition-colors"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
+
+      {/* Delete Confirmation Modal */}
+      <BaseModal
+        isOpen={!!userToDelete}
+        onClose={() => setUserToDelete(null)}
+        className="max-w-md"
+      >
+        <div className="space-y-6">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 bg-red-100 dark:bg-red-500/10 rounded-2xl flex items-center justify-center shrink-0">
+              <AlertTriangle className="w-6 h-6 text-red-600 dark:text-red-500" />
+            </div>
+            <div>
+              <h3 className="text-xl font-bold text-slate-900 dark:text-[#F5F5F5]">Hapus Akun Pengguna?</h3>
+              <p className="text-xs text-slate-500 dark:text-[#B4B4C8]">Tindakan ini tidak dapat dibatalkan</p>
+            </div>
+          </div>
+
+          <p className="text-slate-600 dark:text-[#B4B4C8] text-sm leading-relaxed">
+            Apakah Anda yakin ingin menghapus akun <span className="font-bold text-slate-900 dark:text-[#F5F5F5]">{userToDelete?.name}</span>? 
+            Tindakan ini akan menghapus data user secara permanen. 
+            Data yang dihapus tidak dapat dipulihkan lagi.
+          </p>
+
+          <div className="flex gap-3">
+            <button
+              onClick={() => setUserToDelete(null)}
+              className="flex-1 px-4 py-2.5 bg-slate-100 dark:bg-[#32324A] text-slate-600 dark:text-[#B4B4C8] font-bold rounded-xl hover:bg-slate-200 dark:hover:bg-[#3F3F5A] transition-colors"
+            >
+              Batal
+            </button>
+            <button
+              onClick={handleDeleteUser}
+              disabled={!!isDeleting}
+              className="flex-1 px-4 py-2.5 bg-red-600 text-white font-bold rounded-xl hover:bg-red-700 shadow-lg shadow-red-500/20 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              {isDeleting ? (
+                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              ) : (
+                <>
+                  <Trash2 className="w-4 h-4" />
+                  Hapus Permanen
+                </>
+              )}
+            </button>
+          </div>
+          <div className="pt-4 border-t border-slate-100 dark:border-[#3F3F5A]/20 text-center">
+            <p className="text-[10px] text-slate-400 italic">Data dihapus dari sistem (Auth & Firestore).</p>
+          </div>
+        </div>
+      </BaseModal>
     </div>
   );
 }

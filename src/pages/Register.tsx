@@ -17,7 +17,7 @@ export default function Register() {
   const [identifier, setIdentifier] = useState('');
   const [identifierError, setIdentifierError] = useState('');
   const [isCheckingIdentifier, setIsCheckingIdentifier] = useState(false);
-  const [whatsapp, setWhatsapp] = useState('');
+  const [whatsappNumber, setWhatsappNumber] = useState('');
 
   useEffect(() => {
     setTheme('dark');
@@ -76,7 +76,7 @@ export default function Register() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!whatsapp.match(/^\+?[0-9]{10,15}$/)) {
+    if (!whatsappNumber.match(/^\+?[0-9]{10,15}$/)) {
       toast.error('Format nomor WhatsApp tidak valid. Gunakan format +628...');
       return;
     }
@@ -87,7 +87,7 @@ export default function Register() {
         name,
         role,
         nim: identifier, // We use nim field to store NIM/NIP/ID
-        whatsapp,
+        whatsappNumber,
       });
       toast.success('Pendaftaran berhasil!');
       navigate('/dashboard');
@@ -225,8 +225,8 @@ export default function Register() {
                 <input 
                   type="tel"
                   required
-                  value={whatsapp}
-                  onChange={(e) => setWhatsapp(e.target.value)}
+                  value={whatsappNumber}
+                  onChange={(e) => setWhatsappNumber(e.target.value)}
                   className="w-full pl-10 pr-4 py-3 bg-slate-50 dark:bg-[#2D2D44] border border-transparent dark:border-[#3F3F5A]/30 rounded-lg focus:outline-none focus:border-brand-dark-accent text-slate-900 dark:text-[#F5F5F5] transition-all"
                   placeholder="+628..."
                 />

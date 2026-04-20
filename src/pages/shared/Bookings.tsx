@@ -16,15 +16,21 @@ export default function Bookings() {
   const [activeTab, setActiveTab] = useState<'active' | 'history'>('active');
   const [cancellingIds, setCancellingIds] = useState<Set<string>>(new Set());
 
-  // Scroll lock when modal is open
+  // Scroll lock and Escape Key when modal is open
   useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setCancelId(null);
+    };
+
     if (cancelId) {
       document.body.style.overflow = 'hidden';
+      window.addEventListener('keydown', handleEsc);
     } else {
       document.body.style.overflow = 'unset';
     }
     return () => {
       document.body.style.overflow = 'unset';
+      window.removeEventListener('keydown', handleEsc);
     };
   }, [cancelId]);
 
@@ -296,12 +302,16 @@ Harap tunjukkan bukti ini kepada petugas jika diminta.`;
       {/* Cancel Confirmation Modal */}
       <AnimatePresence>
         {cancelId && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div 
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4 cursor-pointer"
+            onClick={() => setCancelId(null)}
+          >
             <motion.div 
-              initial={{ opacity: 0, scale: 0.9, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.9, y: 20 }}
-              className="bg-white dark:bg-[#27273A] dark:shadow-lg dark:shadow-black/20 w-full max-w-sm rounded-2xl shadow-xl border border-slate-200 dark:border-[#3F3F5A]/50 overflow-hidden p-6 text-center"
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white dark:bg-[#1e1e2d] w-full max-w-sm rounded-2xl shadow-xl border border-slate-200 dark:border-[#3F3F5A]/50 overflow-hidden p-6 text-center cursor-default"
+              onClick={(e) => e.stopPropagation()}
             >
               <XCircle className="w-12 h-12 text-red-400 mx-auto mb-4" />
               <h3 className="text-xl font-bold text-slate-900 dark:text-[#F5F5F5] mb-2">Batalkan Pesanan?</h3>

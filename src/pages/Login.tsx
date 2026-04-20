@@ -122,6 +122,7 @@ export default function Login() {
     setError('');
     try {
       if (isForgotPassword) {
+        // ... existing forgot password logic ...
         if (resetStep === 'EMAIL') {
           if (!nim) {
             setError('Silakan masukkan email Anda terlebih dahulu.');
@@ -187,7 +188,7 @@ export default function Login() {
         toast.success('Berhasil mendaftar dan masuk!');
         handleExit('/dashboard');
       } else {
-        await emailLogin(nim, password);
+        await emailLogin(nim, password, role);
         toast.success('Berhasil masuk!');
         handleExit('/dashboard');
       }
@@ -215,8 +216,6 @@ export default function Login() {
     }
   };
 
-  const [showRegistrationConfirm, setShowRegistrationConfirm] = useState<{ email: string, name: string, user: FirebaseUser, suggestedRole: Role } | null>(null);
-
   const handleGoogleLogin = async () => {
     setGoogleLoading(true);
     setError('');
@@ -224,12 +223,12 @@ export default function Login() {
       const result = await signInWithPopup(auth, googleProvider);
       const currentUser = result.user;
 
-      // login() now returns isNewUser if it's a new user
+      // login() now automatically creates a skeleton profile, detects role, and validates against 'role' state
       const { isNewUser } = await login(role, currentUser);
 
       if (isNewUser) {
-        toast.success(`Hampir selesai! Silakan lengkapi data Anda.`);
-        handleExit('/daftar');
+        toast.success(`Akun Google berhasil terhubung!`);
+        handleExit('/dashboard');
       } else {
         toast.success(`Selamat datang kembali!`);
         handleExit('/dashboard');
@@ -237,12 +236,14 @@ export default function Login() {
     } catch (err: any) {
       console.error("Google Login Error:", err);
       if (err.code === 'auth/popup-blocked') {
-        setError('Popup diblokir oleh browser. Silakan izinkan popup untuk situs ini dan coba lagi.');
+        setError('Popup diblokir oleh browser. Jika Anda menggunakan Preview, pastikan Anda mengizinkan popup atau buka aplikasi di Tab Baru.');
       } else if (err.code === 'auth/popup-closed-by-user') {
         setGoogleLoading(false);
-        toast.error('Login dibatalkan.');
+        toast.error('Login dibatalkan (Popup ditutup).');
+      } else if (err.code === 'auth/cancelled-popup-request') {
+        setGoogleLoading(false);
       } else {
-        setError(`Gagal masuk dengan Google: ${err.message || err.code || 'Kesalahan tidak diketahui'}`);
+        setError(`Gagal masuk dengan Google: ${err.message || err.code || 'Kesalahan tidak diketahui'}. Tips: Coba buka di Tab Baru.`);
       }
     } finally {
       setGoogleLoading(false);
@@ -300,16 +301,14 @@ export default function Login() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0, transition: { duration: 0.3, ease: "easeInOut" } }}
             transition={{ duration: 0.4, ease: "easeOut" }}
-            className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
           >
             {/* Login Modal Card */}
             <motion.div 
-              initial={{ opacity: 0, scale: 0.95, y: 30, filter: "blur(4px)" }}
+              initial={{ opacity: 0, scale: 0.95 }}
               animate={{ 
                 opacity: 1, 
                 scale: 1, 
-                y: 0,
-                filter: "blur(0px)",
                 transition: { 
                   type: "spring", 
                   damping: 22, 
@@ -320,11 +319,9 @@ export default function Login() {
               exit={{ 
                 opacity: 0, 
                 scale: 0.98, 
-                y: 10,
-                filter: "blur(4px)",
                 transition: { duration: 0.2, ease: "easeIn" }
               }}
-              className="bg-white dark:bg-[#27273A] dark:shadow-2xl dark:shadow-black/40 w-[95vw] max-w-md rounded-2xl shadow-xl border border-slate-200 dark:border-[#3F3F5A]/30 overflow-hidden relative max-h-[95vh] flex flex-col"
+              className="bg-white dark:bg-[#1e1e2d] w-full max-w-md rounded-2xl shadow-2xl border border-slate-200 dark:border-[#3F3F5A]/30 overflow-hidden relative max-h-[95vh] flex flex-col"
             >
               
               {/* Back Button */}
