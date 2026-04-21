@@ -241,7 +241,7 @@ export default function ManageUsers() {
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">
                           <p className={cn("truncate", user.isOrphan && "text-red-500 dark:text-red-400 font-medium")}>{user.name}</p>
-                          {user.isOrphan && <AlertTriangle className="w-3 h-3 text-red-500" title="Akun ini telah dihapus tetapi datanya masih ada" />}
+                          {user.isOrphan && <AlertTriangle className="w-3 h-3 text-red-500" title="Data tersimpan, akun Auth dihapus (Status: Nonaktif)" />}
                         </div>
                         {user.division && (
                           <p className="text-[10px] text-slate-500 font-normal truncate uppercase tracking-tighter">{user.division}</p>

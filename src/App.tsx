@@ -3,12 +3,13 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { DataProvider } from './contexts/DataContext';
+import { PROJECT_TITLE } from './constants';
 import Landing from './pages/Landing';
 import Login from './pages/Login';
 import DashboardLayout from './components/DashboardLayout';
@@ -24,6 +25,7 @@ import Help from './pages/shared/Help';
 import ManageRooms from './pages/admin/ManageRooms';
 import ManageUsers from './pages/admin/ManageUsers';
 import AuditReports from './pages/admin/AuditReports';
+import RoleRequests from './pages/admin/RoleRequests';
 import ResetPassword from './pages/ResetPassword';
 import Register from './pages/Register';
 
@@ -70,6 +72,10 @@ const DashboardRouter = () => {
 };
 
 export default function App() {
+  useEffect(() => {
+    document.title = PROJECT_TITLE;
+  }, []);
+
   return (
     <ThemeProvider>
       <AuthProvider>
@@ -118,6 +124,11 @@ export default function App() {
                 <Route path="/admin/users" element={
                   <ProtectedRoute allowedRoles={['admin', 'staff']}>
                     <ManageUsers />
+                  </ProtectedRoute>
+                } />
+                <Route path="/admin/perubahan-peran" element={
+                  <ProtectedRoute allowedRoles={['admin', 'staff']}>
+                    <RoleRequests />
                   </ProtectedRoute>
                 } />
                 <Route path="/admin/laporan" element={

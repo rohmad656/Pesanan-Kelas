@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useAuth, Role } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { auth, googleProvider, db } from '../lib/firebase';
@@ -10,10 +10,11 @@ import { cn } from '../lib/utils';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'motion/react';
 import { GoogleButton } from '../components/GoogleButton';
+import RoleChangeModal from '../components/RoleChangeModal';
 
 export default function Login() {
   const [role, setRole] = useState<Role>('mahasiswa');
-  const { login, emailLogin, emailRegister, sendOTPReset, verifyOTPReset, completeOTPReset, pendingRegistration } = useAuth();
+  const { login, emailLogin, emailRegister, sendOTPReset, verifyOTPReset, completeOTPReset, pendingRegistration, conflictInfo } = useAuth();
   const { setTheme } = useTheme();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
@@ -50,6 +51,7 @@ export default function Login() {
   const [resetStep, setResetStep] = useState<'EMAIL' | 'CODE' | 'NEW_PASSWORD' | 'SUCCESS'>('EMAIL');
   const [resetCode, setResetCode] = useState('');
   const [isVerifyingCode, setIsVerifyingCode] = useState(false);
+  const [isRoleModalOpen, setIsRoleModalOpen] = useState(false);
 
   const handleExit = (path: string) => {
     setExitDestination(path);
@@ -446,6 +448,25 @@ export default function Login() {
                       Daftar Sekarang
                     </button>
                   )}
+                  {error.includes('sudah terdaftar sebagai') && conflictInfo && (
+                    <div className="flex flex-col gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setIsRoleModalOpen(true)}
+                        className="mt-2 text-brand-400 hover:text-brand-300 font-bold underline underline-offset-4 text-xs transition-colors"
+                      >
+                        Ajukan Perubahan Peran
+                      </button>
+                      <Link to="/bantuan" className="text-[10px] text-slate-400 hover:text-[#B4B4C8] transition-colors">
+                        Butuh bantuan? Hubungi Admin
+                      </Link>
+                    </div>
+                  )}
+                  {!error.includes('sudah terdaftar sebagai') && error.length > 0 && (
+                    <Link to="/bantuan" className="mt-1 text-[10px] text-slate-400 hover:text-[#B4B4C8] transition-colors underline decoration-slate-600">
+                      Ada kendala? Hubungi Admin
+                    </Link>
+                  )}
                 </motion.div>
               )}
 
@@ -823,6 +844,14 @@ export default function Login() {
       </motion.div>
     )}
   </AnimatePresence>
+  {conflictInfo && (
+    <RoleChangeModal
+      isOpen={isRoleModalOpen}
+      onClose={() => setIsRoleModalOpen(false)}
+      userEmail={conflictInfo.email}
+      currentRole={conflictInfo.role}
+    />
+  )}
 </div>
   );
 }

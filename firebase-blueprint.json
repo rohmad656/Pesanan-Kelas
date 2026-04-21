@@ -2,7 +2,7 @@
   "entities": {
     "User": {
       "title": "User",
-      "description": "A user of the CampusBook system (Mahasiswa, Dosen, or Admin)",
+      "description": "A user of the Kampus Booking system (Mahasiswa, Dosen, or Admin)",
       "type": "object",
       "properties": {
         "uid": { "type": "string", "description": "Firebase Auth UID" },
@@ -130,6 +130,21 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["hashedOtp", "expiresAt", "email", "createdAt", "attempts"]
+    },
+    "RoleChangeRequest": {
+      "title": "RoleChangeRequest",
+      "description": "A request from a user to change their account role",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string", "format": "email" },
+        "currentRole": { "type": "string" },
+        "requestedRole": { "type": "string" },
+        "reason": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["email", "currentRole", "requestedRole", "reason", "status", "createdAt"]
     }
   },
   "firestore": {
@@ -164,6 +179,10 @@
     "/otp_resets/{email}": {
       "schema": { "$ref": "#/entities/OTPReset" },
       "description": "Stores 6-digit OTP codes for password resets"
+    },
+    "/role_change_requests/{requestId}": {
+      "schema": { "$ref": "#/entities/RoleChangeRequest" },
+      "description": "Stores user-submitted requests for role changes"
     }
   }
 }

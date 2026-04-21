@@ -18,12 +18,14 @@ import {
   HelpCircle,
   AlertCircle,
   Moon,
-  Sun
+  Sun,
+  ShieldCheck
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { collection, query, where, onSnapshot, writeBatch, doc, serverTimestamp, updateDoc, or } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import toast from 'react-hot-toast';
+import { PROJECT_NAME } from '../constants';
 
 import { useData } from '../contexts/DataContext';
 
@@ -185,10 +187,16 @@ export default function DashboardLayout() {
       });
 
       if (!snapshot.empty) {
-        const notifs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any))
-          .sort((a, b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0));
-        setNotifications(notifs);
-        setUnreadCount(notifs.filter(n => !n.isRead).length);
+        setNotifications(prev => {
+          const newNotifs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
+          // Deduplicate based on ID to avoid double entries in UI
+          const combined = [...newNotifs];
+          const unique = Array.from(new Map(combined.map(item => [item.id, item])).values())
+            .sort((a, b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0));
+          
+          setUnreadCount(unique.filter(n => !n.isRead).length);
+          return unique;
+        });
       } else {
         setNotifications([]);
         setUnreadCount(0);
@@ -251,6 +259,7 @@ export default function DashboardLayout() {
       case 'admin':
         items = [
           { name: 'Verifikasi', path: '/dashboard', icon: LayoutDashboard },
+          { name: 'Permintaan Role', path: '/admin/perubahan-peran', icon: ShieldCheck },
           { name: 'Kelola Ruangan', path: '/admin/ruangan', icon: Building },
           { name: 'Manajemen Pengguna', path: '/admin/users', icon: Users },
           { name: 'Laporan & Audit', path: '/admin/laporan', icon: FileText },
@@ -294,7 +303,7 @@ export default function DashboardLayout() {
       >
         <div className="p-6 flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-extrabold text-brand-700 dark:text-brand-dark-accent tracking-tight">CampusBook</h1>
+            <h1 className="text-2xl font-extrabold text-brand-700 dark:text-brand-dark-accent tracking-tight">{PROJECT_NAME}</h1>
             <p className="text-xs text-slate-600 dark:text-[#B4B4C8] mt-1 capitalize">
               {profile?.role === 'admin' || profile?.role === 'staff' ? 'Admin/Staff' : profile?.role} Portal
             </p>
@@ -465,13 +474,13 @@ export default function DashboardLayout() {
                           IconComponent = CalendarDays;
                           iconColorClass = 'text-blue-500 dark:text-blue-400';
                           if (notif.type === 'approved') {
-                            badgeColorClass = 'bg-green-500';
+                            badgeColorClass = 'bg-green-500/10 text-green-600 dark:text-green-400 border border-green-500/20';
                             badgeText = 'Disetujui';
                           } else if (notif.type === 'rejected') {
-                            badgeColorClass = 'bg-red-500';
+                            badgeColorClass = 'bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20';
                             badgeText = 'Ditolak';
                           } else if (notif.type === 'reminder') {
-                            badgeColorClass = 'bg-amber-500';
+                            badgeColorClass = 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20';
                             badgeText = 'Ingat';
                           }
                         } 
@@ -480,8 +489,11 @@ export default function DashboardLayout() {
                           IconComponent = AlertCircle;
                           iconColorClass = 'text-amber-500 dark:text-amber-400';
                           if (notif.title.toLowerCase().includes('selesai') || notif.message.toLowerCase().includes('selesai')) {
-                            badgeColorClass = 'bg-green-500';
+                            badgeColorClass = 'bg-green-500/10 text-green-600 dark:text-green-400 border border-green-500/20';
                             badgeText = 'Selesai';
+                          } else {
+                            badgeColorClass = 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20';
+                            badgeText = 'Laporan';
                           }
                         }
                         // Category: Info
@@ -510,7 +522,7 @@ export default function DashboardLayout() {
                                   {notif.title}
                                 </p>
                                 {badgeText && (
-                                  <span className={cn("text-[9px] px-1.5 py-0.5 rounded-full text-white font-extrabold uppercase tracking-wider", badgeColorClass)}>
+                                  <span className={cn("text-[8px] px-1.5 py-0.5 rounded-full font-bold uppercase tracking-wider whitespace-nowrap", badgeColorClass)}>
                                     {badgeText}
                                   </span>
                                 )}
@@ -570,7 +582,7 @@ export default function DashboardLayout() {
             <Outlet />
           </div>
           <footer className="px-4 md:px-8 py-4 border-t border-slate-200 dark:border-[#3F3F5A]/30 text-[10px] text-slate-400 dark:text-[#B4B4C8]/30 text-center mt-auto">
-            © 2026 CampusBook • Modern Academic Experience • Made with ❤️ for Campus Innovation
+            © 2026 {PROJECT_NAME} • Modern Academic Experience • Made with ❤️ for Campus Innovation
           </footer>
         </div>
       </main>

@@ -1,7 +1,25 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { User, Mail, Lock, Bell, Save, AlertTriangle, CheckCircle2, Eye, EyeOff } from 'lucide-react';
+import { 
+  User, 
+  Mail, 
+  Lock, 
+  Bell, 
+  Save, 
+  AlertTriangle, 
+  CheckCircle2, 
+  Eye, 
+  EyeOff,
+  ShieldCheck,
+  RefreshCw,
+  Clock,
+  XCircle
+} from 'lucide-react';
 import toast from 'react-hot-toast';
+import { db } from '../../lib/firebase';
+import { collection, query, where, onSnapshot, orderBy } from 'firebase/firestore';
+import RoleChangeModal from '../../components/RoleChangeModal';
+import { cn } from '../../lib/utils';
 
 export default function Profile() {
   const { profile, updateUserProfile } = useAuth();
@@ -17,9 +35,13 @@ export default function Profile() {
   const [notifEmail, setNotifEmail] = useState(profile?.notifEmail ?? true);
   const [notifWhatsApp, setNotifWhatsApp] = useState(profile?.notifWhatsApp ?? false);
   const [reminderMinutes, setReminderMinutes] = useState(profile?.reminderMinutes ?? 30);
+  const [roleRequests, setRoleRequests] = useState<any[]>([]);
+  const [isRoleModalOpen, setIsRoleModalOpen] = useState(false);
+  const [whatsappError, setWhatsappError] = useState('');
+  const [nimError, setNimError] = useState('');
 
   // Sync state with profile from context (Firestore single source of truth)
-  React.useEffect(() => {
+  useEffect(() => {
     if (profile) {
       setName(profile.name || '');
       setEmail(profile.email || '');
@@ -33,14 +55,77 @@ export default function Profile() {
     }
   }, [profile]);
 
-  const handleSave = async (e: React.FormEvent) => {
-    e.preventDefault();
+  useEffect(() => {
+    if (!profile?.email) return;
     
-    // WhatsApp validation: only numbers and + prefix
-    if (whatsappNumber && !whatsappNumber.match(/^\+?[0-9]{10,15}$/)) {
-      toast.error('Format nomor WhatsApp tidak valid. Gunakan format +628...');
+    const q = query(
+      collection(db, 'role_change_requests'), 
+      where('email', '==', profile.email),
+      orderBy('createdAt', 'desc')
+    );
+    
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setRoleRequests(data);
+    });
+    
+    return () => unsubscribe();
+  }, [profile?.email]);
+
+  // Format and Validate WhatsApp on change
+  const handleWhatsappChange = (value: string) => {
+    let formatted = value;
+    if (value.startsWith('08')) {
+      formatted = '+628' + value.substring(2);
+    } 
+    formatted = formatted.replace(/[^\d+]/g, '');
+    setWhatsappNumber(formatted);
+
+    if (!formatted) {
+      setWhatsappError('');
+    } else if (!formatted.startsWith('+62')) {
+      setWhatsappError('Gunakan format +62...');
+    } else if (formatted.length < 12 || formatted.length > 15) {
+      setWhatsappError('Panjang nomor tidak valid (10-13 digit setelah +62)');
+    } else {
+      setWhatsappError('');
+    }
+  };
+
+  // Validate NIM/NIP on change
+  const handleNimChange = (value: string) => {
+    setNim(value);
+    if (!value) {
+      setNimError('');
       return;
     }
+
+    if (profile?.role === 'mahasiswa') {
+      if (!/^\d+$/.test(value)) {
+        setNimError('NIM harus berupa angka saja.');
+      } else if (value.length !== 12) {
+        setNimError('NIM harus tepat 12 digit.');
+      } else {
+        setNimError('');
+      }
+    } else if (profile?.role === 'dosen') {
+      if (!/^\d+$/.test(value)) {
+        setNimError('NIP harus berupa angka saja.');
+      } else if (value.length !== 18) {
+        setNimError('NIP harus tepat 18 digit.');
+      } else {
+        setNimError('');
+      }
+    } else {
+      setNimError('');
+    }
+  };
+
+  const isFormValid = name && nim && !nimError && whatsappNumber && !whatsappError;
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!isFormValid) return;
 
     setIsSaving(true);
     try {
@@ -221,10 +306,16 @@ export default function Profile() {
                   type="text" 
                   required
                   value={nim}
-                  onChange={(e) => setNim(e.target.value)}
+                  onChange={(e) => handleNimChange(e.target.value)}
                   placeholder={`Masukkan ${getIdentifierLabel()}`}
-                  className="w-full px-4 py-2.5 bg-slate-50 dark:bg-[#1E1E2F] border border-slate-200 dark:border-[#3F3F5A]/30 rounded-xl focus:outline-none focus:border-brand-400 dark:border-brand-dark-accent text-slate-900 dark:text-[#F5F5F5]"
+                  className={cn(
+                    "w-full px-4 py-2.5 bg-slate-50 dark:bg-[#1E1E2F] border rounded-xl focus:outline-none transition-all",
+                    nimError ? "border-red-500 text-red-500" : "border-slate-200 dark:border-[#3F3F5A]/30 focus:border-brand-400 dark:border-brand-dark-accent text-slate-900 dark:text-[#F5F5F5]"
+                  )}
                 />
+                {nimError && (
+                  <p className="text-[10px] text-red-500 mt-1 font-medium">{nimError}</p>
+                )}
                 <p className="text-[10px] text-slate-500 mt-1 italic">
                   *Anda bisa login menggunakan {getIdentifierLabel()} ini.
                 </p>
@@ -237,10 +328,16 @@ export default function Profile() {
                   type="tel" 
                   required
                   value={whatsappNumber}
-                  onChange={(e) => setWhatsappNumber(e.target.value)}
+                  onChange={(e) => handleWhatsappChange(e.target.value)}
                   placeholder="+628..."
-                  className="w-full px-4 py-2.5 bg-slate-50 dark:bg-[#1E1E2F] border border-slate-200 dark:border-[#3F3F5A]/30 rounded-xl focus:outline-none focus:border-brand-400 dark:border-brand-dark-accent text-slate-900 dark:text-[#F5F5F5]"
+                  className={cn(
+                    "w-full px-4 py-2.5 bg-slate-50 dark:bg-[#1E1E2F] border rounded-xl focus:outline-none transition-all",
+                    whatsappError ? "border-red-500 text-red-500" : "border-slate-200 dark:border-[#3F3F5A]/30 focus:border-brand-400 dark:border-brand-dark-accent text-slate-900 dark:text-[#F5F5F5]"
+                  )}
                 />
+                {whatsappError && (
+                  <p className="text-[10px] text-red-500 mt-1 font-medium">{whatsappError}</p>
+                )}
               </div>
               {profile?.role !== 'mahasiswa' && (
                 <div className="space-y-1.5">
@@ -343,8 +440,8 @@ export default function Profile() {
             <div className="pt-6 flex justify-end">
               <button 
                 type="submit"
-                disabled={isSaving}
-                className="flex items-center gap-2 px-6 py-2.5 bg-brand-dark-accent-light text-brand-dark-on-accent font-bold rounded-xl hover:bg-brand-dark-accent-hover transition-colors disabled:opacity-50"
+                disabled={isSaving || !isFormValid}
+                className="flex items-center gap-2 px-6 py-2.5 bg-brand-dark-accent-light text-brand-dark-on-accent font-bold rounded-xl hover:bg-brand-dark-accent-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Save className="w-4 h-4" />
                 {isSaving ? 'Menyimpan...' : 'Simpan Perubahan'}
@@ -352,7 +449,71 @@ export default function Profile() {
             </div>
           </form>
         </div>
+
+        {/* Role Management Card */}
+        {profile?.role !== 'admin' && (
+          <div className="bg-white dark:bg-[#27273A] dark:shadow-lg dark:shadow-black/20 border border-slate-200 dark:border-[#3F3F5A]/30 rounded-2xl p-6 space-y-4 h-fit">
+            <h3 className="text-sm font-bold text-slate-900 dark:text-[#F5F5F5] uppercase tracking-wider flex items-center gap-2">
+              <ShieldCheck className="w-5 h-5 text-brand-600 dark:text-brand-dark-accent" /> Manajemen Peran
+            </h3>
+            
+            <p className="text-xs text-slate-500 dark:text-[#B4B4C8] leading-relaxed">
+              Jika peran akun Anda saat ini (<strong>{profile.role.toUpperCase()}</strong>) tidak sesuai, Anda dapat mengajukan permintaan perubahan ke Admin Kampus.
+            </p>
+
+            <button
+              onClick={() => setIsRoleModalOpen(true)}
+              disabled={roleRequests.some(r => r.status === 'pending')}
+              className="w-full py-2.5 bg-slate-100 dark:bg-[#32324A] text-brand-700 dark:text-brand-dark-accent font-bold rounded-xl hover:bg-slate-50 dark:hover:bg-[#3F3F5A] transition-all flex items-center justify-center gap-2 border border-brand-100 dark:border-brand-900/30 disabled:opacity-50"
+            >
+              <RefreshCw className="w-4 h-4" />
+              Ajukan Perubahan Peran
+            </button>
+
+            {roleRequests.length > 0 && (
+              <div className="pt-4 space-y-3">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Riwayat Permintaan</p>
+                <div className="space-y-2">
+                  {roleRequests.slice(0, 3).map((req) => (
+                    <div key={req.id} className="p-3 bg-slate-50 dark:bg-[#1E1E2F] rounded-xl border border-slate-100 dark:border-[#3F3F5A]/20">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-[10px] font-bold text-slate-500 uppercase">{req.requestedRole}</span>
+                        <div className="flex items-center gap-1.5">
+                          {req.status === 'pending' ? (
+                            <Clock className="w-3 h-3 text-amber-500" />
+                          ) : req.status === 'approved' ? (
+                            <CheckCircle2 className="w-3 h-3 text-green-500" />
+                          ) : (
+                            <XCircle className="w-3 h-3 text-red-500" />
+                          )}
+                          <span className={cn(
+                            "text-[10px] font-bold uppercase",
+                            req.status === 'pending' ? "text-amber-500" :
+                            req.status === 'approved' ? "text-green-500" :
+                            "text-red-500"
+                          )}>
+                            {req.status === 'pending' ? 'Menunggu' : req.status === 'approved' ? 'Disetujui' : 'Ditolak'}
+                          </span>
+                        </div>
+                      </div>
+                      <p className="text-[10px] text-slate-400">
+                        {req.createdAt ? new Date(req.createdAt.toMillis()).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Baru'}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
+
+      <RoleChangeModal 
+        isOpen={isRoleModalOpen}
+        onClose={() => setIsRoleModalOpen(false)}
+        userEmail={profile?.email || ''}
+        currentRole={profile?.role || ''}
+      />
     </div>
   );
 }

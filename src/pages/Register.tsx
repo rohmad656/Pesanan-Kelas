@@ -6,6 +6,7 @@ import { User, Mail, Phone, ShieldCheck, Loader2, ArrowRight, Contact } from 'lu
 import { cn } from '../lib/utils';
 import toast from 'react-hot-toast';
 import { motion } from 'motion/react';
+import { PROJECT_NAME } from '../constants';
 
 export default function Register() {
   const { pendingRegistration, completeRegistration, logout } = useAuth();
@@ -18,6 +19,7 @@ export default function Register() {
   const [identifierError, setIdentifierError] = useState('');
   const [isCheckingIdentifier, setIsCheckingIdentifier] = useState(false);
   const [whatsappNumber, setWhatsappNumber] = useState('');
+  const [whatsappError, setWhatsappError] = useState('');
 
   useEffect(() => {
     setTheme('dark');
@@ -31,10 +33,56 @@ export default function Register() {
     }
   }, [pendingRegistration, navigate, setTheme]);
 
+  // Format and Validate WhatsApp on change
+  const handleWhatsappChange = (value: string) => {
+    let formatted = value;
+    // Auto-format: 08... -> +628...
+    if (value.startsWith('08')) {
+      formatted = '+628' + value.substring(2);
+    } 
+    // Only allow numbers and + prefix
+    formatted = formatted.replace(/[^\d+]/g, '');
+    
+    setWhatsappNumber(formatted);
+
+    // Validation
+    if (!formatted) {
+      setWhatsappError('');
+    } else if (!formatted.startsWith('+62')) {
+      setWhatsappError('Gunakan format +62...');
+    } else if (formatted.length < 12 || formatted.length > 15) {
+      setWhatsappError('Panjang nomor tidak valid (10-13 digit setelah +62)');
+    } else {
+      setWhatsappError('');
+    }
+  };
+
+  // Validate Identifier on change
   useEffect(() => {
     if (!identifier) {
       setIdentifierError('');
       return;
+    }
+
+    // Format validation
+    if (role === 'mahasiswa') {
+      if (!/^\d+$/.test(identifier)) {
+        setIdentifierError('NIM harus berupa angka saja.');
+        return;
+      }
+      if (identifier.length !== 12) {
+        setIdentifierError('NIM harus tepat 12 digit.');
+        return;
+      }
+    } else if (role === 'dosen') {
+      if (!/^\d+$/.test(identifier)) {
+        setIdentifierError('NIP harus berupa angka saja.');
+        return;
+      }
+      if (identifier.length !== 18) {
+        setIdentifierError('NIP harus tepat 18 digit.');
+        return;
+      }
     }
 
     const checkIdentifier = async () => {
@@ -69,17 +117,16 @@ export default function Register() {
   };
 
   const getIdentifierPlaceholder = () => {
-    if (role === 'mahasiswa') return 'Contoh: 210605110001';
-    if (role === 'dosen') return 'Contoh: 198001012010121001';
-    return 'Contoh: STF001';
+    if (role === 'mahasiswa') return '12 Digit Angka NIM';
+    if (role === 'dosen') return '18 Digit Angka NIP';
+    return 'ID Staf Anda';
   };
+
+  const isFormValid = identifier && !identifierError && whatsappNumber && !whatsappError && name && !isCheckingIdentifier;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!whatsappNumber.match(/^\+?[0-9]{10,15}$/)) {
-      toast.error('Format nomor WhatsApp tidak valid. Gunakan format +628...');
-      return;
-    }
+    if (!isFormValid) return;
 
     setLoading(true);
     try {
@@ -121,7 +168,7 @@ export default function Register() {
             </div>
             <h1 className="text-2xl font-extrabold mb-2 tracking-tight">Lengkapi Profil Anda</h1>
             <p className="text-slate-500 dark:text-[#B4B4C8] text-sm">
-              Satu langkah lagi untuk bergabung dengan <span className="text-brand-dark-accent font-bold">CampusBook</span>.
+              Satu langkah lagi untuk bergabung dengan <span className="text-brand-dark-accent font-bold">{PROJECT_NAME}</span>.
             </p>
           </div>
 
@@ -221,23 +268,34 @@ export default function Register() {
             <div className="space-y-1.5">
               <label className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-[#B4B4C8]">Nomor WhatsApp</label>
               <div className="relative group">
-                <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 group-focus-within:text-brand-dark-accent transition-colors" />
+                <Phone className={cn(
+                  "absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 transition-colors",
+                  whatsappError ? "text-red-500" : "text-slate-400 group-focus-within:text-brand-dark-accent"
+                )} />
                 <input 
                   type="tel"
                   required
                   value={whatsappNumber}
-                  onChange={(e) => setWhatsappNumber(e.target.value)}
-                  className="w-full pl-10 pr-4 py-3 bg-slate-50 dark:bg-[#2D2D44] border border-transparent dark:border-[#3F3F5A]/30 rounded-lg focus:outline-none focus:border-brand-dark-accent text-slate-900 dark:text-[#F5F5F5] transition-all"
+                  onChange={(e) => handleWhatsappChange(e.target.value)}
+                  className={cn(
+                    "w-full pl-10 pr-4 py-3 bg-slate-50 dark:bg-[#2D2D44] border rounded-lg focus:outline-none transition-all",
+                    whatsappError 
+                      ? "border-red-500 text-red-500 focus:border-red-600" 
+                      : "border-transparent dark:border-[#3F3F5A]/30 focus:border-brand-dark-accent text-slate-900 dark:text-[#F5F5F5]"
+                  )}
                   placeholder="+628..."
                 />
               </div>
+              {whatsappError && (
+                <p className="text-[10px] text-red-500 font-medium">{whatsappError}</p>
+              )}
             </div>
 
             <div className="pt-4">
               <button 
                 type="submit"
-                disabled={loading}
-                className="w-full py-4 bg-brand-dark-accent-light hover:bg-brand-dark-accent-hover text-brand-dark-on-accent font-bold rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 group disabled:opacity-50"
+                disabled={loading || !isFormValid}
+                className="w-full py-4 bg-brand-dark-accent-light hover:bg-brand-dark-accent-hover text-brand-dark-on-accent font-bold rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 group disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {loading ? (
                   <Loader2 className="w-5 h-5 animate-spin" />

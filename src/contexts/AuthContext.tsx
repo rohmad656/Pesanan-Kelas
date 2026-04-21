@@ -24,10 +24,16 @@ export interface UserProfile {
   createdAt: any;
 }
 
+export interface ConflictInfo {
+  email: string;
+  role: string;
+}
+
 interface AuthContextType {
   user: FirebaseUser | null;
   profile: UserProfile | null;
   pendingRegistration: { uid: string, email: string, name: string, photoURL: string, role?: Role } | null;
+  conflictInfo: ConflictInfo | null;
   loading: boolean;
   login: (intendedRole?: Role, existingUser?: FirebaseUser) => Promise<{ isNewUser: boolean }>;
   completeRegistration: (data: Partial<UserProfile>) => Promise<void>;
@@ -57,6 +63,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   });
   const [pendingRegistration, setPendingRegistration] = useState<{ uid: string, email: string, name: string, photoURL: string, role?: Role } | null>(null);
+  const [conflictInfo, setConflictInfo] = useState<ConflictInfo | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -208,7 +215,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (res.ok) {
           const checkData = await res.json();
           if (!checkData.available) {
-            const error: any = new Error(`Email ${emailOrId} sudah terdaftar sebagai ${checkData.role?.toUpperCase()}. Silakan Login menggunakan portal ${checkData.role?.toUpperCase()}, atau hubungi Admin jika Anda ingin mengajukan perubahan peran.`);
+            setConflictInfo({ email: emailOrId, role: checkData.role });
+            const error: any = new Error(`Email ${emailOrId} sudah terdaftar sebagai ${checkData.role?.toUpperCase()}. Silakan Login menggunakan profil ${checkData.role?.toUpperCase()}, atau ajukan perubahan peran jika salah.`);
             error.code = 'custom/email-already-in-use';
             throw error;
           }
@@ -670,6 +678,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       user, 
       profile, 
       pendingRegistration, 
+      conflictInfo,
       loading, 
       login, 
       completeRegistration, 

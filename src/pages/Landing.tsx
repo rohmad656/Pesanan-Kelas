@@ -3,17 +3,18 @@ import { Link } from 'react-router-dom';
 import { Building, Calendar, ShieldCheck, ArrowRight, Play, Lock, Database, Quote, User } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useTheme } from '../contexts/ThemeContext';
+import { PROJECT_NAME } from '../constants';
 
 const QUOTES = [
   {
     text: "Booking kelas untuk praktikum tambahan sekarang hanya butuh 3 klik. Tidak perlu lagi bolak-balik ke ruang admin fakultas.",
     author: "Mahasiswa Informatika",
-    role: "Pengguna Aktif CampusBook"
+    role: `Pengguna Aktif ${PROJECT_NAME}`
   },
   {
     text: "Sangat membantu dalam mengatur jadwal ujian susulan. Saya bisa melihat ketersediaan ruangan secara real-time.",
     author: "Dosen Fakultas Teknik",
-    role: "Pengguna Aktif CampusBook"
+    role: `Pengguna Aktif ${PROJECT_NAME}`
   },
   {
     text: "Rekap laporan peminjaman ruangan menjadi jauh lebih mudah dan transparan. Sangat menghemat waktu kerja kami.",
@@ -49,7 +50,7 @@ export default function Landing() {
           <div className="w-8 h-8 bg-gradient-to-br from-indigo-500 to-blue-500 rounded-lg flex items-center justify-center">
             <Building className="w-5 h-5 text-white" />
           </div>
-          <span className="text-2xl font-extrabold text-[#F5F5F5] tracking-tight">CampusBook</span>
+          <span className="text-2xl font-extrabold text-[#F5F5F5] tracking-tight">{PROJECT_NAME}</span>
         </div>
         <Link 
           to="/login" 
@@ -84,7 +85,7 @@ export default function Landing() {
             className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-[#2D2D44] border border-[#3F3F5A]/50 text-indigo-300 text-sm font-medium mb-8"
           >
             <span className="flex h-2 w-2 rounded-full bg-indigo-500"></span>
-            Sistem Pemesanan Ruangan Terpadu
+            Solusi Digital untuk Reservasi Ruangan Kampus
           </motion.div>
           
           <motion.h1 
@@ -276,7 +277,7 @@ export default function Landing() {
               <div className="w-8 h-8 bg-gradient-to-br from-indigo-500 to-blue-500 rounded-lg flex items-center justify-center">
                 <Building className="w-5 h-5 text-white" />
               </div>
-              <span className="text-2xl font-extrabold text-[#F5F5F5] tracking-tight">CampusBook</span>
+              <span className="text-2xl font-extrabold text-[#F5F5F5] tracking-tight">{PROJECT_NAME}</span>
             </div>
             <p className="text-[#B4B4C8] max-w-sm leading-relaxed">
               Platform manajemen pemesanan ruangan kampus yang terintegrasi, aman, dan mudah digunakan.
@@ -299,7 +300,7 @@ export default function Landing() {
           </div>
         </div>
         <div className="text-center text-[#B4B4C8] text-sm pt-8 border-t border-[#3F3F5A]/30 px-4">
-          © 2026 CampusBook • Modern Academic Experience
+          © 2026 {PROJECT_NAME} • Modern Academic Experience
         </div>
       </motion.footer>
     </div>

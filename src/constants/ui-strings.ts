@@ -1,5 +1,5 @@
 /**
- * Centralized UI Strings for CampusBook
+ * Centralized UI Strings for Kampus Booking
  * Following i18n/localization principles for easier wording & maintenance.
  */
 
