@@ -5,6 +5,7 @@ import { Link } from 'react-router-dom';
 import { motion } from 'motion/react';
 
 import { UI_STRINGS } from '../../constants/ui-strings';
+import RoleStatusWidget from '../../components/RoleStatusWidget';
 
 export default function DosenDashboard() {
   const { profile } = useAuth();
@@ -32,6 +33,8 @@ export default function DosenDashboard() {
       animate="visible"
       className="space-y-6"
     >
+      <RoleStatusWidget />
+
       <motion.div variants={itemVariants} className="bg-brand-100 dark:bg-[#32324A] rounded-2xl p-8 shadow-lg border border-slate-200 dark:border-[#3F3F5A]/30 relative overflow-hidden">
         <div className="absolute top-0 right-0 w-64 h-64 bg-brand-dark-accent-light opacity-5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3"></div>
         <h1 className="text-3xl font-bold text-slate-900 dark:text-[#F5F5F5] mb-2">{t.welcome_dosen.replace('{name}', profile?.name || '')}</h1>

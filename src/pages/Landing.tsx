@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Building, Calendar, ShieldCheck, ArrowRight, Play, Lock, Database, Quote, User } from 'lucide-react';
+import { Building, Calendar, ShieldCheck, ArrowRight, Play, Lock, Database, Quote, User, Mail, HelpCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useTheme } from '../contexts/ThemeContext';
-import { PROJECT_NAME } from '../constants';
+import { PROJECT_NAME, SUPPORT_EMAIL, SUPPORT_EMAIL_ALT } from '../constants';
 
 const QUOTES = [
   {
@@ -291,11 +291,17 @@ export default function Landing() {
             </ul>
           </div>
           <div>
-            <h4 className="font-bold text-[#F5F5F5] mb-6 text-lg">Bantuan</h4>
+            <h4 className="font-bold text-[#F5F5F5] mb-6 text-lg">Bantuan Teknis</h4>
             <ul className="space-y-4 text-[#B4B4C8]">
-              <li><Link to="/bantuan" onClick={() => trackClick('click_footer_kontak')} className="hover:text-indigo-400 transition-colors">Kontak Admin</Link></li>
+              <li className="flex flex-col gap-1">
+                <span className="text-xs text-[#6A6A8A] flex items-center gap-1.5">
+                  Email Support Kampus 
+                  <HelpCircle className="w-3 h-3 cursor-help text-[#3F3F5A]" title="Gunakan email ini untuk bantuan teknis aplikasi Kampus Booking." />
+                </span>
+                <a href={`mailto:${SUPPORT_EMAIL}`} className="text-indigo-400 hover:underline break-all text-sm">{SUPPORT_EMAIL}</a>
+                <span className="text-[10px] text-[#4A4A6A] italic">Fallback: {SUPPORT_EMAIL_ALT}</span>
+              </li>
               <li><Link to="/bantuan" onClick={() => trackClick('click_footer_panduan')} className="hover:text-indigo-400 transition-colors">Panduan Pengguna</Link></li>
-              <li><Link to="/bantuan" onClick={() => trackClick('click_footer_lapor')} className="hover:text-indigo-400 transition-colors">Laporkan Masalah</Link></li>
             </ul>
           </div>
         </div>

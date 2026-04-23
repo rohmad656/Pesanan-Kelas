@@ -13,17 +13,28 @@ import {
   ShieldCheck,
   RefreshCw,
   Clock,
-  XCircle
+  XCircle,
+  HelpCircle
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { db } from '../../lib/firebase';
-import { collection, query, where, onSnapshot, orderBy } from 'firebase/firestore';
+import { 
+  collection, 
+  query, 
+  where, 
+  onSnapshot, 
+  orderBy,
+  doc,
+  setDoc,
+  serverTimestamp
+} from 'firebase/firestore';
 import RoleChangeModal from '../../components/RoleChangeModal';
 import { cn } from '../../lib/utils';
 
 export default function Profile() {
-  const { profile, updateUserProfile } = useAuth();
+  const { profile, user, updateUserProfile, resendVerification } = useAuth();
   const [isSaving, setIsSaving] = useState(false);
+  const [isResending, setIsResending] = useState(false);
   const [name, setName] = useState(profile?.name || '');
   const [email, setEmail] = useState(profile?.email || '');
   const [nim, setNim] = useState(profile?.nim || '');
@@ -122,10 +133,39 @@ export default function Profile() {
   };
 
   const isFormValid = name && nim && !nimError && whatsappNumber && !whatsappError;
+  const isEmailVerified = user?.emailVerified;
+
+  const handleResendVerification = async () => {
+    setIsResending(true);
+    try {
+      await resendVerification();
+    } catch (error: any) {
+      toast.error(error.message || 'Gagal mengirim ulang verifikasi');
+    } finally {
+      setIsResending(false);
+    }
+  };
+
+  // Notification Status Text
+  const getActiveChannelsText = () => {
+    const active = [];
+    if (notifPortal) active.push('Portal');
+    if (notifEmail) active.push('Email');
+    if (notifWhatsApp && whatsappNumber && !whatsappError) active.push('WhatsApp');
+    
+    if (active.length === 0) return 'Tidak ada kanal aktif. Anda tidak akan menerima notifikasi.';
+    return `Notifikasi akan dikirim ke: ${active.join(', ')}.`;
+  };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isFormValid) return;
+
+    // Safety check: at least one channel MUST be active
+    if (!notifPortal && !notifEmail && (!notifWhatsApp || !whatsappNumber || whatsappError)) {
+      toast.error('Minimal satu kanal notifikasi harus aktif!');
+      return;
+    }
 
     setIsSaving(true);
     try {
@@ -141,6 +181,24 @@ export default function Profile() {
         notifWhatsApp,
         reminderMinutes
       });
+
+      // Automatic Sync to Help Center if Staff/Admin
+      if (profile?.role === 'admin' || profile?.role === 'staff') {
+        if (whatsappNumber && !whatsappError) {
+          try {
+            await setDoc(doc(db, 'admin_contacts', profile.id), {
+              name: name,
+              whatsapp: whatsappNumber,
+              isActive: true,
+              updatedAt: serverTimestamp(),
+              staffId: profile.id
+            }, { merge: true });
+          } catch (syncError) {
+            console.error("Auto-sync to admin_contacts failed:", syncError);
+            // Don't block the main save if sync fails
+          }
+        }
+      }
 
       // Update password if provided
       if (newPassword && newPassword.trim() !== '') {
@@ -177,6 +235,16 @@ export default function Profile() {
   };
 
   const isCampusEmail = profile?.email?.endsWith('@campus.ac.id');
+
+  const handleCancelEmailChange = async () => {
+    if (!profile) return;
+    try {
+      await updateUserProfile({ pendingEmail: '' });
+      toast.success('Permintaan ubah email dibatalkan.');
+    } catch (error: any) {
+      toast.error('Gagal membatalkan permintaan.');
+    }
+  };
 
   return (
     <div className="animate-fade-in max-w-4xl mx-auto space-y-6">
@@ -231,15 +299,52 @@ export default function Profile() {
           
           <div className="mt-6 w-full space-y-2 text-left">
             <div className="p-3 bg-slate-50 dark:bg-[#32324A] rounded-xl border border-slate-100 dark:border-[#3F3F5A]/30">
-              <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Status Email</p>
+              <p className="text-[10px] font-bold text-slate-400 uppercase mb-1 flex items-center justify-between">
+                <span>Status Email</span>
+                {!isEmailVerified && (
+                  <button 
+                    disabled={isResending}
+                    onClick={handleResendVerification}
+                    className="text-[9px] text-brand-600 dark:text-brand-dark-accent hover:underline disabled:opacity-50 transition-colors"
+                  >
+                    {isResending ? 'Mengirim...' : 'Kirim Ulang Link'}
+                  </button>
+                )}
+              </p>
               <div className="flex items-center justify-between">
                 <span className="text-xs font-medium text-slate-700 dark:text-[#F5F5F5] truncate mr-2">{profile?.email}</span>
-                {isCampusEmail ? (
-                  <span className="px-2 py-0.5 bg-yellow-500/10 text-yellow-500 text-[10px] font-bold rounded border border-yellow-500/20">Default</span>
+                {isEmailVerified ? (
+                  <span className="px-2 py-0.5 bg-green-500/10 text-green-500 text-[10px] font-bold rounded border border-green-500/20 flex items-center gap-1">
+                    <CheckCircle2 className="w-2.5 h-2.5" /> Terverifikasi
+                  </span>
                 ) : (
-                  <span className="px-2 py-0.5 bg-green-500/10 text-green-500 text-[10px] font-bold rounded border border-green-500/20">Terverifikasi</span>
+                  <span className="px-2 py-0.5 bg-red-500/10 text-red-500 text-[10px] font-bold rounded border border-red-500/20 flex items-center gap-1">
+                    <AlertTriangle className="w-2.5 h-2.5" /> Belum Verif
+                  </span>
                 )}
               </div>
+              {!isEmailVerified && !profile?.pendingEmail && (
+                <p className="text-[9px] text-red-500 mt-1.5 leading-tight italic">
+                  *Email harus terverifikasi untuk dapat melakukan pemesanan ruangan dan laporan.
+                </p>
+              )}
+              {profile?.pendingEmail && (
+                <div className="mt-3 p-2 bg-blue-500/10 border border-blue-500/20 rounded-lg">
+                  <p className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase mb-1 flex items-center justify-between">
+                    <span>Menunggu Verifikasi</span>
+                    <button 
+                      onClick={handleCancelEmailChange}
+                      className="text-[9px] text-red-500 hover:underline"
+                    >
+                      Batal
+                    </button>
+                  </p>
+                  <p className="text-[11px] font-bold text-slate-700 dark:text-[#F5F5F5] truncate">{profile.pendingEmail}</p>
+                  <p className="text-[9px] text-slate-500 mt-1 italic leading-tight">
+                    Link verifikasi telah dikirim ke alamat di atas. Klik link tersebut untuk mengganti email akun Anda.
+                  </p>
+                </div>
+              )}
             </div>
             <div className="p-3 bg-slate-50 dark:bg-[#32324A] rounded-xl border border-slate-100 dark:border-[#3F3F5A]/30">
               <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Status {getIdentifierLabel()}</p>
@@ -266,7 +371,7 @@ export default function Profile() {
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <label className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-[#B4B4C8]">
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
                   Nama Lengkap {!profile?.profileCompleted && <span className="text-red-500">*</span>}
                 </label>
                 <input 
@@ -274,11 +379,11 @@ export default function Profile() {
                   required
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  className="w-full px-4 py-2.5 bg-slate-50 dark:bg-[#1E1E2F] border border-slate-200 dark:border-[#3F3F5A]/30 rounded-xl focus:outline-none focus:border-brand-400 dark:border-brand-dark-accent text-slate-900 dark:text-[#F5F5F5]"
+                  className="w-full px-4 py-2.5 bg-slate-50 dark:bg-[#1E1E2F] border border-slate-200 dark:border-[#3F3F5A]/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500/50 focus:border-brand-500 dark:border-brand-dark-accent text-slate-900 dark:text-[#F5F5F5] transition-all"
                 />
               </div>
               <div className="space-y-1.5">
-                <label className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-[#B4B4C8]">
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
                   Email {!profile?.profileCompleted && <span className="text-red-500">*</span>}
                 </label>
                 <div className="relative">
@@ -289,17 +394,17 @@ export default function Profile() {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="nama@email.com"
-                    className="w-full pl-10 pr-4 py-2.5 bg-slate-50 dark:bg-[#1E1E2F] border border-slate-200 dark:border-[#3F3F5A]/30 rounded-xl focus:outline-none focus:border-brand-400 dark:border-brand-dark-accent text-slate-900 dark:text-[#F5F5F5]"
+                    className="w-full pl-10 pr-4 py-2.5 bg-slate-50 dark:bg-[#1E1E2F] border border-slate-200 dark:border-[#3F3F5A]/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500/50 focus:border-brand-500 dark:border-brand-dark-accent text-slate-900 dark:text-[#F5F5F5] transition-all"
                   />
                 </div>
                 {isCampusEmail && (
-                  <p className="text-[10px] text-yellow-600 dark:text-yellow-400 mt-1 italic">
+                  <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-1 font-bold italic">
                     *Ganti email default dengan email pribadi Anda agar lebih fleksibel.
                   </p>
                 )}
               </div>
               <div className="space-y-1.5">
-                <label className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-[#B4B4C8]">
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
                   {getIdentifierLabel()} {!profile?.profileCompleted && <span className="text-red-500">*</span>}
                 </label>
                 <input 
@@ -310,18 +415,18 @@ export default function Profile() {
                   placeholder={`Masukkan ${getIdentifierLabel()}`}
                   className={cn(
                     "w-full px-4 py-2.5 bg-slate-50 dark:bg-[#1E1E2F] border rounded-xl focus:outline-none transition-all",
-                    nimError ? "border-red-500 text-red-500" : "border-slate-200 dark:border-[#3F3F5A]/30 focus:border-brand-400 dark:border-brand-dark-accent text-slate-900 dark:text-[#F5F5F5]"
+                    nimError ? "border-red-500 text-red-500 ring-1 ring-red-500/20" : "border-slate-200 dark:border-[#3F3F5A]/30 focus:ring-2 focus:ring-brand-500/50 focus:border-brand-500 dark:border-brand-dark-accent text-slate-900 dark:text-[#F5F5F5]"
                   )}
                 />
                 {nimError && (
-                  <p className="text-[10px] text-red-500 mt-1 font-medium">{nimError}</p>
+                  <p className="text-[10px] text-red-500 mt-1 font-extrabold">{nimError}</p>
                 )}
-                <p className="text-[10px] text-slate-500 mt-1 italic">
+                <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1 italic font-medium">
                   *Anda bisa login menggunakan {getIdentifierLabel()} ini.
                 </p>
               </div>
               <div className="space-y-1.5">
-                <label className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-[#B4B4C8]">
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
                   Nomor WhatsApp {!profile?.profileCompleted && <span className="text-red-500">*</span>}
                 </label>
                 <input 
@@ -332,22 +437,22 @@ export default function Profile() {
                   placeholder="+628..."
                   className={cn(
                     "w-full px-4 py-2.5 bg-slate-50 dark:bg-[#1E1E2F] border rounded-xl focus:outline-none transition-all",
-                    whatsappError ? "border-red-500 text-red-500" : "border-slate-200 dark:border-[#3F3F5A]/30 focus:border-brand-400 dark:border-brand-dark-accent text-slate-900 dark:text-[#F5F5F5]"
+                    whatsappError ? "border-red-500 text-red-500 ring-1 ring-red-500/20" : "border-slate-200 dark:border-[#3F3F5A]/30 focus:ring-2 focus:ring-brand-500/50 focus:border-brand-500 dark:border-brand-dark-accent text-slate-900 dark:text-[#F5F5F5]"
                   )}
                 />
                 {whatsappError && (
-                  <p className="text-[10px] text-red-500 mt-1 font-medium">{whatsappError}</p>
+                  <p className="text-[10px] text-red-500 mt-1 font-extrabold">{whatsappError}</p>
                 )}
               </div>
               {profile?.role !== 'mahasiswa' && (
                 <div className="space-y-1.5">
-                  <label className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-[#B4B4C8]">Jabatan / Divisi</label>
+                  <label className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">Jabatan / Divisi</label>
                   <input 
                     type="text" 
                     value={division}
                     onChange={(e) => setDivision(e.target.value)}
                     placeholder="Contoh: Dosen Teknik Informatika"
-                    className="w-full px-4 py-2.5 bg-slate-50 dark:bg-[#1E1E2F] border border-slate-200 dark:border-[#3F3F5A]/30 rounded-xl focus:outline-none focus:border-brand-400 dark:border-brand-dark-accent text-slate-900 dark:text-[#F5F5F5]"
+                    className="w-full px-4 py-2.5 bg-slate-50 dark:bg-[#1E1E2F] border border-slate-200 dark:border-[#3F3F5A]/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500/50 focus:border-brand-500 dark:border-brand-dark-accent text-slate-900 dark:text-[#F5F5F5] transition-all"
                   />
                 </div>
               )}
@@ -359,19 +464,19 @@ export default function Profile() {
               </h3>
               <div className="space-y-4">
                 <div className="space-y-1.5">
-                  <label className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-[#B4B4C8]">Kata Sandi Baru</label>
+                  <label className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">Kata Sandi Baru</label>
                   <div className="relative">
                     <input 
                       type={showPassword ? 'text' : 'password'}
                       value={newPassword}
                       onChange={(e) => setNewPassword(e.target.value)}
                       placeholder="Biarkan kosong jika tidak ingin mengubah"
-                      className="w-full px-4 py-2.5 bg-slate-50 dark:bg-[#1E1E2F] border border-slate-200 dark:border-[#3F3F5A]/30 rounded-xl focus:outline-none focus:border-brand-dark-accent text-slate-900 dark:text-[#F5F5F5] pr-12"
+                      className="w-full px-4 py-2.5 bg-slate-50 dark:bg-[#1E1E2F] border border-slate-200 dark:border-[#3F3F5A]/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500/50 focus:border-brand-500 dark:border-brand-dark-accent text-slate-900 dark:text-[#F5F5F5] pr-12 transition-all placeholder:text-slate-400/70"
                     />
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-[#F5F5F5] transition-colors"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 p-2 text-slate-400 hover:text-slate-600 dark:hover:text-[#F5F5F5] transition-colors min-w-[32px] min-h-[32px] flex items-center justify-center"
                       title={showPassword ? "Sembunyikan sandi" : "Tampilkan sandi"}
                     >
                       {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
@@ -386,49 +491,82 @@ export default function Profile() {
                 <Bell className="w-5 h-5 text-blue-600 dark:text-[#86d2ff]" /> Preferensi Notifikasi
               </h3>
               <div className="space-y-5">
-                <div className="space-y-3">
-                  <p className="text-sm font-bold text-slate-700 dark:text-[#F5F5F5]">Kanal Notifikasi</p>
-                  <label className="flex items-center gap-3 cursor-pointer">
-                    <input 
-                      type="checkbox" 
-                      checked={notifPortal}
-                      onChange={(e) => setNotifPortal(e.target.checked)}
-                      className="w-4 h-4 rounded border-brand-dark-border-strong text-brand-700 dark:text-brand-dark-accent focus:ring-brand-dark-accent-light bg-slate-50 dark:bg-[#1E1E2F]" 
-                    />
-                    <span className="text-slate-600 dark:text-[#B4B4C8] text-sm">Notifikasi Portal (In-App)</span>
-                  </label>
-                  <label className="flex items-center gap-3 cursor-pointer">
-                    <input 
-                      type="checkbox" 
-                      checked={notifEmail}
-                      onChange={(e) => setNotifEmail(e.target.checked)}
-                      className="w-4 h-4 rounded border-brand-dark-border-strong text-brand-700 dark:text-brand-dark-accent focus:ring-brand-dark-accent-light bg-slate-50 dark:bg-[#1E1E2F]" 
-                    />
-                    <span className="text-slate-600 dark:text-[#B4B4C8] text-sm">Email</span>
-                  </label>
-                  <label className="flex items-center gap-3 cursor-pointer">
-                    <input 
-                      type="checkbox" 
-                      checked={notifWhatsApp}
-                      onChange={(e) => setNotifWhatsApp(e.target.checked)}
-                      className="w-4 h-4 rounded border-brand-dark-border-strong text-brand-700 dark:text-brand-dark-accent focus:ring-brand-dark-accent-light bg-slate-50 dark:bg-[#1E1E2F]" 
-                    />
-                    <span className="text-slate-600 dark:text-[#B4B4C8] text-sm">WhatsApp</span>
-                  </label>
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center">
+                    <p className="text-sm font-bold text-slate-700 dark:text-[#F5F5F5]">Kanal Notifikasi</p>
+                    <span className={cn(
+                      "text-[10px] px-2 py-0.5 rounded-full font-medium transition-colors",
+                      (!notifPortal && !notifEmail && !notifWhatsApp) ? "bg-red-500/10 text-red-500" : "bg-brand-500/10 text-brand-500 dark:text-brand-dark-accent"
+                    )}>
+                      {getActiveChannelsText()}
+                    </span>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <label className="group flex flex-col p-3 border border-slate-200 dark:border-[#3F3F5A]/30 rounded-xl hover:border-brand-400 dark:hover:border-brand-dark-accent transition-all cursor-pointer bg-white dark:bg-[#27273A]">
+                      <div className="flex items-center gap-3 mb-1">
+                        <input 
+                          type="checkbox" 
+                          checked={notifPortal}
+                          onChange={(e) => setNotifPortal(e.target.checked)}
+                          className="w-4 h-4 rounded border-brand-dark-border-strong text-brand-700 dark:text-brand-dark-accent focus:ring-brand-dark-accent-light bg-slate-50 dark:bg-[#1E1E2F]" 
+                        />
+                        <span className="text-slate-900 dark:text-[#F5F5F5] text-sm font-semibold">Portal</span>
+                      </div>
+                      <span className="text-[10px] text-slate-500 dark:text-[#B4B4C8] ml-7">Notifikasi muncul di dashboard aplikasi.</span>
+                    </label>
+
+                    <label className="group flex flex-col p-3 border border-slate-200 dark:border-[#3F3F5A]/30 rounded-xl hover:border-brand-400 dark:hover:border-brand-dark-accent transition-all cursor-pointer bg-white dark:bg-[#27273A]">
+                      <div className="flex items-center gap-3 mb-1">
+                        <input 
+                          type="checkbox" 
+                          checked={notifEmail}
+                          onChange={(e) => setNotifEmail(e.target.checked)}
+                          className="w-4 h-4 rounded border-brand-dark-border-strong text-brand-700 dark:text-brand-dark-accent focus:ring-brand-dark-accent-light bg-slate-50 dark:bg-[#1E1E2F]" 
+                        />
+                        <span className="text-slate-900 dark:text-[#F5F5F5] text-sm font-semibold">Email</span>
+                      </div>
+                      <span className="text-[10px] text-slate-500 dark:text-[#B4B4C8] ml-7">Pesan dikirim ke inbox email terdaftar.</span>
+                    </label>
+
+                    <label className={cn(
+                      "group flex flex-col p-3 border border-slate-200 dark:border-[#3F3F5A]/30 rounded-xl hover:border-brand-400 dark:hover:border-brand-dark-accent transition-all cursor-pointer bg-white dark:bg-[#27273A]",
+                      whatsappError && "opacity-60 grayscale cursor-not-allowed"
+                    )}>
+                      <div className="flex items-center gap-3 mb-1">
+                        <input 
+                          type="checkbox" 
+                          checked={notifWhatsApp}
+                          disabled={!!whatsappError}
+                          onChange={(e) => setNotifWhatsApp(e.target.checked)}
+                          className="w-4 h-4 rounded border-brand-dark-border-strong text-brand-700 dark:text-brand-dark-accent focus:ring-brand-dark-accent-light bg-slate-50 dark:bg-[#1E1E2F] disabled:opacity-50" 
+                        />
+                        <span className="text-slate-900 dark:text-[#F5F5F5] text-sm font-semibold">WhatsApp</span>
+                      </div>
+                      <span className="text-[10px] text-slate-500 dark:text-[#B4B4C8] ml-7">
+                        {whatsappError ? 'Nomor WA belum valid.' : 'Pesan dikirim ke nomor WA terdaftar.'}
+                      </span>
+                    </label>
+                  </div>
                 </div>
 
                 <div className="space-y-3 pt-2">
-                  <p className="text-sm font-bold text-slate-700 dark:text-[#F5F5F5]">Pengingat Jadwal (Reminder)</p>
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-bold text-slate-700 dark:text-[#F5F5F5]">Pengingat Jadwal (Reminder)</p>
+                    <HelpCircle className="w-3.5 h-3.5 text-slate-400 cursor-help" title="Sistem akan mengirimkan pengingat sebelum waktu booking dimulai." />
+                  </div>
                   <div className="flex items-center gap-3">
                     <span className="text-slate-600 dark:text-[#B4B4C8] text-sm">Kirim pengingat</span>
                     <select 
                       value={reminderMinutes}
                       onChange={(e) => setReminderMinutes(parseInt(e.target.value))}
-                      className="px-3 py-1.5 bg-slate-50 dark:bg-[#1E1E2F] border border-slate-200 dark:border-[#3F3F5A]/30 rounded-lg focus:outline-none focus:border-brand-400 dark:border-brand-dark-accent text-slate-900 dark:text-[#F5F5F5] text-sm"
+                      className="px-3 py-1.5 bg-white dark:bg-[#1E1E2F] border border-slate-200 dark:border-[#3F3F5A]/30 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-dark-accent-light text-slate-900 dark:text-[#F5F5F5] text-sm shadow-sm"
                     >
+                      <option value="5">5 menit</option>
                       <option value="15">15 menit</option>
                       <option value="30">30 menit</option>
                       <option value="60">1 jam</option>
+                      <option value="120">2 jam</option>
                       <option value="1440">1 hari</option>
                     </select>
                     <span className="text-slate-600 dark:text-[#B4B4C8] text-sm">sebelum jadwal dimulai</span>
@@ -441,7 +579,7 @@ export default function Profile() {
               <button 
                 type="submit"
                 disabled={isSaving || !isFormValid}
-                className="flex items-center gap-2 px-6 py-2.5 bg-brand-dark-accent-light text-brand-dark-on-accent font-bold rounded-xl hover:bg-brand-dark-accent-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex items-center gap-2 px-6 py-2.5 bg-brand-dark-accent-light text-brand-dark-on-accent font-bold rounded-xl hover:bg-brand-dark-accent-hover shadow-lg shadow-brand-500/20 hover:shadow-brand-500/40 transition-all hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:scale-100"
               >
                 <Save className="w-4 h-4" />
                 {isSaving ? 'Menyimpan...' : 'Simpan Perubahan'}
@@ -464,7 +602,7 @@ export default function Profile() {
             <button
               onClick={() => setIsRoleModalOpen(true)}
               disabled={roleRequests.some(r => r.status === 'pending')}
-              className="w-full py-2.5 bg-slate-100 dark:bg-[#32324A] text-brand-700 dark:text-brand-dark-accent font-bold rounded-xl hover:bg-slate-50 dark:hover:bg-[#3F3F5A] transition-all flex items-center justify-center gap-2 border border-brand-100 dark:border-brand-900/30 disabled:opacity-50"
+              className="w-full py-2.5 bg-slate-100 dark:bg-[#32324A] text-brand-700 dark:text-brand-dark-accent font-bold rounded-xl hover:bg-brand-50 dark:hover:bg-[#3F3F5A] transition-all hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-2 border border-brand-100 dark:border-brand-900/30 shadow-sm hover:shadow-md disabled:opacity-50 disabled:scale-100"
             >
               <RefreshCw className="w-4 h-4" />
               Ajukan Perubahan Peran
@@ -499,6 +637,11 @@ export default function Profile() {
                       <p className="text-[10px] text-slate-400">
                         {req.createdAt ? new Date(req.createdAt.toMillis()).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Baru'}
                       </p>
+                      {req.status === 'rejected' && req.rejectReason && (
+                        <p className="mt-2 text-[10px] text-red-500 italic border-l-2 border-red-500/30 pl-2">
+                          "{req.rejectReason}"
+                        </p>
+                      )}
                     </div>
                   ))}
                 </div>

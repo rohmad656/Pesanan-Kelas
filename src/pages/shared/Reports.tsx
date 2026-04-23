@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { collection, query, where, onSnapshot, orderBy } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, orderBy, limit } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../lib/firebase';
 import { AlertTriangle, Plus, Loader2, CheckCircle2, Clock, MapPin, MessageCircle } from 'lucide-react';
 import ReportIssueModal from '../../components/ReportIssueModal';
@@ -10,15 +10,28 @@ export default function Reports() {
   const [issues, setIssues] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [issueLimit, setIssueLimit] = useState(6);
+  const [severityFilter, setSeverityFilter] = useState('all');
 
   useEffect(() => {
     if (!user) return;
 
-    const q = query(
-      collection(db, 'issues'), 
-      where('userId', '==', user.uid),
-      orderBy('createdAt', 'desc')
-    );
+    let q;
+    if (severityFilter === 'all') {
+      q = query(
+        collection(db, 'issues'), 
+        where('userId', '==', user.uid),
+        orderBy('createdAt', 'desc'),
+        limit(issueLimit)
+      );
+    } else {
+      q = query(
+        collection(db, 'issues'), 
+        where('userId', '==', user.uid),
+        where('severity', '==', severityFilter),
+        orderBy('createdAt', 'desc')
+      );
+    }
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const issuesData = snapshot.docs.map(doc => ({
@@ -33,7 +46,7 @@ export default function Reports() {
     });
 
     return () => unsubscribe();
-  }, [user]);
+  }, [user, issueLimit, severityFilter]);
 
   const getStatusStyle = (status: string) => {
     switch (status) {
@@ -58,13 +71,30 @@ export default function Reports() {
           <h1 className="text-2xl font-bold text-slate-900 dark:text-[#F5F5F5]">Laporan & Bantuan</h1>
           <p className="text-slate-600 dark:text-[#B4B4C8] text-sm">Riwayat laporan kerusakan fasilitas Anda.</p>
         </div>
-        <button 
-          onClick={() => setIsModalOpen(true)}
-          className="flex items-center gap-2 px-6 py-2.5 bg-brand-700 text-white font-bold rounded-xl hover:bg-brand-dark-hover hover:scale-[1.02] active:scale-[0.98] transition-all shadow-lg shadow-brand-700/20"
-        >
-          <Plus className="w-5 h-5" />
-          Buat Laporan Baru
-        </button>
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex bg-white dark:bg-[#27273A] p-1 rounded-xl border border-slate-200 dark:border-[#3F3F5A]/30 shadow-sm">
+            {(['all', 'high', 'medium', 'low'] as const).map((s) => (
+              <button
+                key={s}
+                onClick={() => setSeverityFilter(s)}
+                className={`px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all ${
+                  severityFilter === s 
+                    ? "bg-brand-600 text-white shadow-md shadow-brand-600/20" 
+                    : "text-slate-500 dark:text-[#B4B4C8] hover:bg-slate-100 dark:hover:bg-[#32324A]"
+                }`}
+              >
+                {s === 'all' ? 'Semua' : s === 'high' ? 'Darurat' : s === 'medium' ? 'Penting' : 'Normal'}
+              </button>
+            ))}
+          </div>
+          <button 
+            onClick={() => setIsModalOpen(true)}
+            className="flex items-center gap-2 px-6 py-2.5 bg-brand-700 text-white font-bold rounded-xl hover:bg-brand-dark-hover hover:scale-[1.02] active:scale-[0.98] transition-all shadow-lg shadow-brand-700/20 text-sm"
+          >
+            <Plus className="w-4 h-4" />
+            Buat Laporan
+          </button>
+        </div>
       </div>
 
       {loading ? (
@@ -82,7 +112,8 @@ export default function Reports() {
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {issues.map((issue) => (
             <div key={issue.id} className="bg-white dark:bg-[#27273A] dark:shadow-lg dark:shadow-black/20 rounded-2xl border border-slate-200 dark:border-[#3F3F5A]/30 p-5 hover:border-brand-300 dark:hover:border-brand-dark-accent transition-all group">
               <div className="flex justify-between items-start mb-4">
@@ -94,10 +125,12 @@ export default function Reports() {
                     <h3 className="font-bold text-slate-900 dark:text-[#F5F5F5] flex items-center gap-2">
                       {issue.roomName || 'Ruangan Tidak Diketahui'}
                       {issue.severity && (
-                        <span className={`px-1.5 py-0.5 rounded text-[8px] font-bold uppercase ${
-                          issue.severity === 'high' ? 'bg-red-500/10 text-red-500' : 'bg-blue-500/10 text-blue-500'
+                        <span className={`px-1.5 py-0.5 rounded text-[8px] font-bold uppercase flex items-center gap-1 ${
+                          issue.severity === 'high' ? 'bg-red-500/10 text-red-500 border border-red-500/20' : 
+                          issue.severity === 'medium' ? 'bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 border border-yellow-500/20' :
+                          'bg-green-500/10 text-green-500 border border-green-500/20'
                         }`}>
-                          {issue.severity}
+                          {issue.severity === 'high' ? '🚨 Darurat' : issue.severity === 'medium' ? '⚠️ Penting' : '✅ Normal'}
                         </span>
                       )}
                     </h3>
@@ -125,7 +158,19 @@ export default function Reports() {
             </div>
           ))}
         </div>
-      )}
+        
+        {severityFilter === 'all' && issues.length >= issueLimit && (
+          <div className="flex justify-center pt-6">
+            <button 
+              onClick={() => setIssueLimit(prev => prev + 6)}
+              className="px-6 py-2 bg-white dark:bg-[#32324A] text-brand-600 dark:text-brand-dark-accent text-xs font-bold rounded-xl border border-slate-200 dark:border-[#3F3F5A]/50 hover:shadow-md transition-all flex items-center gap-2"
+            >
+              Muat Lebih Banyak Laporan
+            </button>
+          </div>
+        )}
+      </>
+    )}
 
       <ReportIssueModal 
         isOpen={isModalOpen} 

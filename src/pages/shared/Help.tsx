@@ -4,12 +4,14 @@ import { useAuth } from '../../contexts/AuthContext';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../lib/firebase';
 import ReportIssueModal from '../../components/ReportIssueModal';
+import { SUPPORT_EMAIL, SUPPORT_EMAIL_ALT, PROJECT_NAME } from '../../constants';
 
 export default function Help() {
   const { profile } = useAuth();
-  const [staffDirectory, setStaffDirectory] = useState<any[]>([]);
+  const [adminContacts, setAdminContacts] = useState<any[]>([]);
   const [loadingStaff, setLoadingStaff] = useState(true);
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+  const [showAllContacts, setShowAllContacts] = useState(false);
   
   const faqs = [
     {
@@ -47,28 +49,26 @@ export default function Help() {
   ];
 
   useEffect(() => {
-    async function fetchStaff() {
+    async function fetchAdminContacts() {
       try {
         const q = query(
-          collection(db, 'users'), 
-          where('role', 'in', ['staff', 'admin'])
+          collection(db, 'admin_contacts'), 
+          where('isActive', '==', true)
         );
         const snapshot = await getDocs(q);
-        const staffData = snapshot.docs
-          .map(doc => ({
-            id: doc.id,
-            ...doc.data()
-          }))
-          .filter((user: any) => user.deleted !== true);
-        setStaffDirectory(staffData);
+        const contacts = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }));
+        setAdminContacts(contacts);
       } catch (error) {
-        handleFirestoreError(error, OperationType.GET, 'users');
+        handleFirestoreError(error, OperationType.GET, 'admin_contacts');
       } finally {
         setLoadingStaff(false);
       }
     }
 
-    fetchStaff();
+    fetchAdminContacts();
   }, []);
 
   return (
@@ -153,37 +153,47 @@ export default function Help() {
                   <div className="flex items-center justify-center py-4">
                     <Loader2 className="w-6 h-6 animate-spin text-brand-700 dark:text-brand-dark-accent" />
                   </div>
-                ) : staffDirectory.length === 0 ? (
-                  <p className="text-xs text-slate-500 italic">Belum ada data staff yang tersedia.</p>
+                ) : adminContacts.length === 0 ? (
+                  <p className="text-xs text-slate-500 italic">Belum ada data staff yang tersedia. Silakan hubungi email support kampus di bawah.</p>
                 ) : (
-                  staffDirectory.map((staff) => (
-                    <div key={staff.id} className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-brand-100 dark:bg-[#32324A] flex items-center justify-center font-bold text-xs shrink-0 overflow-hidden border border-brand-300 dark:border-brand-dark-accent/30">
-                        {staff.photoURL ? (
-                          <img src={staff.photoURL} alt={staff.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                        ) : (
-                          (staff.name || '?').charAt(0).toUpperCase()
-                        )}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <h4 className="font-semibold text-slate-900 dark:text-[#F5F5F5] text-sm truncate">{staff.name}</h4>
-                        <p className="text-slate-600 dark:text-[#B4B4C8] text-xs truncate capitalize">
-                          {staff.division || (staff.role === 'admin' || staff.role === 'staff' ? 'Admin/Staff' : staff.role)}
-                        </p>
-                      </div>
-                      {(staff.whatsappNumber || staff.whatsapp) && (
-                        <a 
-                          href={`https://wa.me/${(staff.whatsappNumber || staff.whatsapp).replace(/\+/g, '')}`} 
-                          target="_blank" 
-                          rel="noopener noreferrer"
-                          className="p-2 bg-[#25D366]/10 text-[#25D366] rounded-lg hover:bg-[#25D366]/20 transition-colors shrink-0"
-                          title="Hubungi via WhatsApp"
-                        >
-                          <MessageCircle className="w-4 h-4" />
-                        </a>
-                      )}
+                  <>
+                    <div className="space-y-4">
+                      {adminContacts.slice(0, showAllContacts ? undefined : 3).map((contact) => (
+                        <div key={contact.id} className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-full bg-brand-100 dark:bg-[#32324A] flex items-center justify-center font-bold text-xs shrink-0 overflow-hidden border border-brand-300 dark:border-brand-dark-accent/30 text-brand-700 dark:text-brand-dark-accent shadow-sm">
+                            {contact.name.charAt(0).toUpperCase()}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <h4 className="font-semibold text-slate-900 dark:text-[#F5F5F5] text-sm truncate">{contact.name}</h4>
+                            <div className="flex items-center gap-1.5 mt-0.5">
+                              <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
+                              <p className="text-slate-500 dark:text-[#B4B4C8] text-[9px] uppercase font-bold tracking-tight">Support Online</p>
+                            </div>
+                          </div>
+                          {contact.whatsapp && (
+                            <a 
+                              href={`https://wa.me/${contact.whatsapp.replace(/\D/g, '')}`} 
+                              target="_blank" 
+                              rel="noopener noreferrer"
+                              className="p-2.5 bg-[#25D366]/10 text-[#25D366] rounded-xl hover:bg-[#25D366]/30 hover:scale-105 active:scale-95 transition-all shadow-sm shrink-0 flex items-center gap-2 group/wa"
+                            >
+                              <MessageCircle className="w-4 h-4 group-hover/wa:rotate-12 transition-transform" />
+                              <span className="text-[10px] font-bold md:block hidden uppercase">Kirim Pesan</span>
+                            </a>
+                          )}
+                        </div>
+                      ))}
                     </div>
-                  ))
+
+                    {adminContacts.length > 3 && (
+                      <button 
+                        onClick={() => setShowAllContacts(!showAllContacts)}
+                        className="w-full py-2 bg-slate-50 dark:bg-[#32324A] text-slate-600 dark:text-[#B4B4C8] text-[10px] font-bold uppercase tracking-widest rounded-xl border border-slate-200 dark:border-[#3F3F5A]/30 hover:bg-white dark:hover:bg-[#3F3F5A] transition-all hover:scale-105 active:scale-95 shadow-sm hover:shadow-md mt-2"
+                      >
+                        {showAllContacts ? 'Sembunyikan Daftar' : `Lihat Semua (${adminContacts.length}) Admin`}
+                      </button>
+                    )}
+                  </>
                 )}
               </div>
             </div>
@@ -198,21 +208,31 @@ export default function Help() {
               </p>
               <button 
                 onClick={() => setIsReportModalOpen(true)}
-                className="w-full py-2 bg-red-500/10 text-red-400 border border-red-500/30 rounded-xl text-sm font-bold hover:bg-red-500/20 transition-colors cursor-pointer"
+                className="w-full py-2 bg-red-500/10 text-red-500 dark:text-red-400 border border-red-500/30 rounded-xl text-sm font-bold hover:bg-red-500/20 transition-all hover:scale-105 active:scale-95 shadow-sm hover:shadow-red-500/10 cursor-pointer"
               >
                 Buat Laporan Kerusakan
               </button>
             </div>
 
-            {/* General Email */}
+            {/* Technical Support Email */}
             <div className="bg-white dark:bg-[#27273A] dark:shadow-lg dark:shadow-black/20 border border-slate-200 dark:border-[#3F3F5A]/30 rounded-2xl p-5">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-brand-100 dark:bg-[#32324A] flex items-center justify-center shrink-0">
-                  <Mail className="w-5 h-5 text-pink-600 dark:text-[#ffafd5]" />
+                  <Mail className="w-5 h-5 text-brand-600 dark:text-brand-dark-accent" />
                 </div>
                 <div className="min-w-0">
-                  <h4 className="font-semibold text-slate-900 dark:text-[#F5F5F5] text-sm">Email Support Umum</h4>
-                  <p className="text-slate-600 dark:text-[#B4B4C8] text-xs mt-1 break-words overflow-wrap-anywhere whitespace-normal">support@campusbook.ac.id</p>
+                  <h4 className="font-semibold text-slate-900 dark:text-[#F5F5F5] text-sm flex items-center gap-1.5">
+                    Email Support Kampus
+                    <span className="inline-block" title="Gunakan email ini untuk bantuan teknis aplikasi Kampus Booking.">
+                      <HelpCircle className="w-3 h-3 text-slate-400 cursor-help" />
+                    </span>
+                  </h4>
+                  <a href={`mailto:${SUPPORT_EMAIL}`} className="text-brand-600 dark:text-brand-dark-accent text-xs mt-1 block hover:underline break-all">
+                    {SUPPORT_EMAIL}
+                  </a>
+                  <p className="text-[10px] text-slate-500 mt-1 italic">
+                    Fallback: <span className="font-mono">{SUPPORT_EMAIL_ALT}</span>
+                  </p>
                 </div>
               </div>
             </div>

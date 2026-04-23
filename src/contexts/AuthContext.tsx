@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { User as FirebaseUser, onAuthStateChanged, signInWithPopup, signOut, signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail, updateEmail, updateProfile as updateAuthProfile, confirmPasswordReset, verifyPasswordResetCode, updatePassword } from 'firebase/auth';
+import { User as FirebaseUser, onAuthStateChanged, signInWithPopup, signOut, signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail, updateEmail, updateProfile as updateAuthProfile, confirmPasswordReset, verifyPasswordResetCode, updatePassword, verifyBeforeUpdateEmail, sendEmailVerification, signInWithRedirect, getRedirectResult } from 'firebase/auth';
 import { doc, getDoc, setDoc, serverTimestamp, collection, query, where, getDocs, updateDoc, onSnapshot, Timestamp, deleteDoc } from 'firebase/firestore';
 import { auth, db, googleProvider, handleFirestoreError, OperationType } from '../lib/firebase';
 import emailjs from '@emailjs/browser';
@@ -21,6 +21,7 @@ export interface UserProfile {
   notifEmail?: boolean;
   notifWhatsApp?: boolean;
   reminderMinutes?: number;
+  pendingEmail?: string;
   createdAt: any;
 }
 
@@ -40,6 +41,7 @@ interface AuthContextType {
   emailLogin: (emailOrId: string, password: string, intendedRole?: Role) => Promise<void>;
   emailRegister: (emailOrId: string, password: string, name: string, intendedRole?: Role) => Promise<void>;
   updateUserProfile: (data: Partial<UserProfile>) => Promise<void>;
+  resendVerification: () => Promise<void>;
   resetPassword: (email: string) => Promise<{ success: boolean; message: string; code?: string }>;
   confirmNewPassword: (code: string, password: string) => Promise<{ success: boolean; message: string; code?: string }>;
   verifyResetCode: (code: string) => Promise<{ success: boolean; email?: string; message?: string; code?: string }>;
@@ -47,6 +49,7 @@ interface AuthContextType {
   verifyOTPReset: (email: string, otp: string) => Promise<{ success: boolean; message: string }>;
   completeOTPReset: (email: string, otp: string, password: string) => Promise<{ success: boolean; message: string }>;
   logout: () => Promise<void>;
+  loginWithRedirect: (intendedRole?: Role) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -69,6 +72,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     let unsubscribeProfile: (() => void) | null = null;
 
+    // Handle Redirect Results (Optional but helpful for slow iFrame popup issues)
+    getRedirectResult(auth).then(async (result) => {
+      if (result?.user) {
+        // Resolve role after redirect
+        const intendedRoleRaw = localStorage.getItem('intended_role');
+        const intendedRole = intendedRoleRaw as Role || 'mahasiswa';
+        await login(intendedRole, result.user);
+        localStorage.removeItem('intended_role');
+      }
+    }).catch(e => console.error("Redirect login result failed:", e));
+
     const unsubscribeAuth = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser) {
         setUser(currentUser);
@@ -79,13 +93,48 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           if (docSnap.exists()) {
             const data = docSnap.data() as UserProfile & { deleted?: boolean };
             if (data.deleted) {
-              // If user is soft-deleted, sign them out
+              // ... existing logout logic ...
               signOut(auth);
               setProfile(null);
               setUser(null);
               localStorage.removeItem('user_profile');
               toast.error('Akun Anda telah dihapus oleh administrator.');
             } else {
+              // --- DETECT ROLE CHANGE & REFRESH TOKEN ---
+              const oldProfileRaw = localStorage.getItem('user_profile');
+              if (oldProfileRaw) {
+                try {
+                  const oldData = JSON.parse(oldProfileRaw);
+                  if (data.role && oldData.role && oldData.role !== data.role) {
+                    console.log(`[AUTH] Role change detected: ${oldData.role} -> ${data.role}`);
+                    // Refresh Auth Token to pick up new Custom Claims from backend
+                    currentUser.getIdToken(true).then(() => {
+                      toast.success(`Role Anda diperbarui menjadi ${data.role.toUpperCase()}!`, {
+                        duration: 6000,
+                        icon: '✨'
+                      });
+                    }).catch(e => {
+                      console.error("Token refresh failed:", e);
+                      toast.error("Role Anda diperbarui. Silakan login ulang untuk sinkronisasi.");
+                    });
+                  }
+                } catch (e) {
+                  console.warn("Role detection skip:", e);
+                }
+              }
+
+              // --- AUTO SYNC NEWLY VERIFIED EMAIL ---
+              // If Auth email (verified) != Firestore email, and it matches pendingEmail
+              if (currentUser.email && currentUser.email !== data.email && currentUser.email === data.pendingEmail) {
+                 updateDoc(docRef, {
+                   email: currentUser.email,
+                   pendingEmail: null, // Clear pending after sync
+                   updatedAt: serverTimestamp()
+                 }).then(() => {
+                   toast.success(`Email Anda berhasil diperbarui ke ${currentUser.email}!`);
+                 }).catch(e => console.error("Sync verified email failed:", e));
+              }
+
               setProfile(data as UserProfile);
               localStorage.setItem('user_profile', JSON.stringify(data));
             }
@@ -284,23 +333,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const docRef = doc(db, 'users', auth.currentUser.uid);
       
-      // If updating email, also update in Firebase Auth
+      // If updating email, use secure verification flow
       if (data.email && data.email !== profile.email) {
         // Use backend API for safe check
-        const res = await fetch(`/api/auth/check-email?email=${encodeURIComponent(data.email)}`);
+        const res = await fetch(`/api/auth/check-email?email=${encodeURIComponent(data.email)}&excludeUid=${auth.currentUser.uid}`);
         if (res.ok) {
           const checkData = await res.json();
           if (!checkData.available) {
             throw new Error('Email sudah digunakan oleh akun lain.');
           }
         }
-        await updateEmail(auth.currentUser, data.email);
+        
+        // Use verifyBeforeUpdateEmail instead of updateEmail for better security and flow
+        await verifyBeforeUpdateEmail(auth.currentUser, data.email);
+        
+        // Save the pending email in Firestore so we can show it in the UI
+        data.pendingEmail = data.email;
+        
+        toast.success(`Permintaan ubah email terkirim ke ${data.email}. Silakan verifikasi email baru Anda sebelum perubahan diterapkan.`);
+        
+        // Remove primary email from the firestore update data for now 
+        delete data.email;
       }
 
       // If updating nim, check uniqueness
       if (data.nim && data.nim !== profile.nim) {
         // Use backend API for safe check
-        const res = await fetch(`/api/auth/check-nim?nim=${encodeURIComponent(data.nim)}`);
+        const res = await fetch(`/api/auth/check-nim?nim=${encodeURIComponent(data.nim)}&excludeUid=${auth.currentUser.uid}`);
         if (res.ok) {
           const checkData = await res.json();
           if (!checkData.available) {
@@ -670,7 +729,35 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const logout = async () => {
-    await signOut(auth);
+    try {
+      localStorage.removeItem('user_profile');
+      localStorage.removeItem('user_role_last_session');
+      localStorage.removeItem('intended_role');
+      await signOut(auth);
+    } catch (error) {
+      console.error('Logout error:', error);
+      // Fallback for safety
+      await signOut(auth).catch(() => {});
+    }
+  };
+
+  const resendVerification = async () => {
+    if (!auth.currentUser) return;
+    try {
+      await sendEmailVerification(auth.currentUser);
+      toast.success('Email verifikasi telah dikirim ulang. Silakan cek kotak masuk Anda.');
+    } catch (error: any) {
+      console.error("Resend verification failed", error);
+      if (error.code === 'auth/too-many-requests') {
+        throw new Error('Terlalu banyak permintaan. Silakan tunggu beberapa saat lagi.');
+      }
+      throw error;
+    }
+  };
+
+  const loginWithRedirect = async (intendedRole?: Role) => {
+    if (intendedRole) localStorage.setItem('intended_role', intendedRole);
+    await signInWithRedirect(auth, googleProvider);
   };
 
   return (
@@ -685,13 +772,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       emailLogin, 
       emailRegister, 
       updateUserProfile, 
+      resendVerification,
       resetPassword, 
       confirmNewPassword, 
       verifyResetCode, 
       sendOTPReset,
       verifyOTPReset,
       completeOTPReset,
-      logout 
+      logout,
+      loginWithRedirect
     }}>
       {children}
     </AuthContext.Provider>

@@ -8,6 +8,7 @@ interface GoogleButtonProps {
   mode: 'login' | 'register';
   disabled?: boolean;
   label?: string;
+  loadingLabel?: string;
 }
 
 export const GoogleButton: React.FC<GoogleButtonProps> = ({ 
@@ -15,7 +16,8 @@ export const GoogleButton: React.FC<GoogleButtonProps> = ({
   loading, 
   mode, 
   disabled,
-  label
+  label,
+  loadingLabel
 }) => {
   return (
     <button 
@@ -29,9 +31,9 @@ export const GoogleButton: React.FC<GoogleButtonProps> = ({
     >
       {loading ? (
         <>
-          <Loader2 className="w-5 h-5 animate-spin text-slate-400" />
-          <span className="text-sm font-bold text-slate-700 dark:text-[#F5F5F5]">
-            Menghubungkan ke Google...
+          <Loader2 className="w-5 h-5 animate-spin text-slate-400 group-hover:text-brand-dark-accent transition-colors" />
+          <span className="text-sm font-bold text-slate-700 dark:text-[#F5F5F5] animate-pulse">
+            {loadingLabel || "Menghubungkan ke Google..."}
           </span>
         </>
       ) : (

@@ -145,6 +145,19 @@
         "updatedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["email", "currentRole", "requestedRole", "reason", "status", "createdAt"]
+    },
+    "AdminContact": {
+      "title": "AdminContact",
+      "description": "Official administrative contact information published globally",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "whatsapp": { "type": "string" },
+        "role" : { "type": "string" },
+        "isActive" : { "type": "boolean" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "whatsapp"]
     }
   },
   "firestore": {
@@ -183,6 +196,10 @@
     "/role_change_requests/{requestId}": {
       "schema": { "$ref": "#/entities/RoleChangeRequest" },
       "description": "Stores user-submitted requests for role changes"
+    },
+    "/admin_contacts/{contactId}": {
+      "schema": { "$ref": "#/entities/AdminContact" },
+      "description": "Official support contact numbers accessible to all users"
     }
   }
 }

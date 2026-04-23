@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useData } from '../../contexts/DataContext';
 import { collection, addDoc, serverTimestamp, getDocs, query, where, runTransaction, doc, onSnapshot } from 'firebase/firestore';
@@ -13,8 +14,9 @@ import BaseModal from '../../components/BaseModal';
 import { UI_STRINGS } from '../../constants/ui-strings';
 
 export default function Rooms() {
-  const { profile } = useAuth();
+  const { profile, user } = useAuth();
   const { rooms, loadingRooms } = useData();
+  const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState('');
   const [showFilters, setShowFilters] = useState(false);
   const [filterCapacity, setFilterCapacity] = useState('');
@@ -137,10 +139,17 @@ export default function Rooms() {
 
   const handleBooking = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedRoom || !profile || !selectedDate || !selectedSlot || !bookingReason) return;
+    if (!selectedRoom || !profile || !user || !selectedDate || !selectedSlot || !bookingReason) return;
 
     if (!profile.profileCompleted && profile.role !== 'admin') {
       toast.error('Lengkapi profil Anda terlebih dahulu sebelum melakukan pemesanan.');
+      navigate('/profil');
+      return;
+    }
+
+    if (!user.emailVerified && profile.role !== 'admin') {
+      toast.error('Ganti email default Anda dan Verifikasi email tersebut terlebih dahulu sebelum meminjam ruangan.');
+      navigate('/profil');
       return;
     }
 

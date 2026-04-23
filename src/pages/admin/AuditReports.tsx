@@ -6,26 +6,49 @@ import toast from 'react-hot-toast';
 
 export default function AuditReports() {
   const [issues, setIssues] = useState<any[]>([]);
+  const [severityFilter, setSeverityFilter] = useState<string>('all');
+  const [issueLimit, setIssueLimit] = useState(10);
   const [loginLogs, setLoginLogs] = useState<any[]>([]);
   const [logLimit, setLogLimit] = useState(10);
   const [roleFilter, setRoleFilter] = useState<string>('all');
   const [isLoadingLogs, setIsLoadingLogs] = useState(true);
+  const [isLoadingIssues, setIsLoadingIssues] = useState(true);
 
+  // Facility Monitoring (Issues) Listener
   useEffect(() => {
-    // Listen to issues
-    const qIssues = query(collection(db, 'issues'), orderBy('createdAt', 'desc'));
+    setIsLoadingIssues(true);
+    let qIssues;
+    
+    // As per user request:
+    // If filtering by specific priority (Emergency/Important), show all matching without set small limits
+    // If showing all, start with a small limit (5-10) and allow load more
+    if (severityFilter === 'all') {
+      qIssues = query(
+        collection(db, 'issues'), 
+        orderBy('createdAt', 'desc'), 
+        limit(issueLimit)
+      );
+    } else {
+      qIssues = query(
+        collection(db, 'issues'), 
+        where('severity', '==', severityFilter),
+        orderBy('createdAt', 'desc')
+      );
+    }
+
     const unsubscribeIssues = onSnapshot(qIssues, (snapshot) => {
       const issuesData = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) }));
       setIssues(issuesData);
+      setIsLoadingIssues(false);
     }, (error) => {
       handleFirestoreError(error, OperationType.GET, 'issues');
+      setIsLoadingIssues(false);
     });
 
-    return () => {
-      unsubscribeIssues();
-    };
-  }, []);
+    return () => unsubscribeIssues();
+  }, [severityFilter, issueLimit]);
 
+  // Audit Logs Listener
   useEffect(() => {
     setIsLoadingLogs(true);
     // Listen to login audit logs
@@ -109,63 +132,111 @@ export default function AuditReports() {
       <div className="grid grid-cols-1 gap-8">
         {/* Monitoring Fasilitas */}
         <div className="bg-white dark:bg-[#27273A] dark:shadow-xl dark:shadow-black/20 rounded-2xl border border-slate-200 dark:border-[#3F3F5A]/30 overflow-hidden">
-          <div className="p-6 border-b border-slate-200 dark:border-[#3F3F5A]/30 flex items-center justify-between">
+          <div className="p-6 border-b border-slate-200 dark:border-[#3F3F5A]/30 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <h3 className="text-lg font-bold text-slate-900 dark:text-[#F5F5F5] flex items-center gap-2">
               <AlertTriangle className="w-5 h-5 text-red-500" />
               Monitoring Fasilitas
             </h3>
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">{issues.length} Laporan</span>
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-black uppercase text-slate-400">Filter:</span>
+                <select 
+                  value={severityFilter}
+                  onChange={(e) => setSeverityFilter(e.target.value)}
+                  className="text-xs font-bold bg-slate-50 dark:bg-[#1E1E2F] border-none rounded-lg px-3 py-2 text-slate-600 dark:text-[#B4B4C8] focus:ring-2 focus:ring-brand-500"
+                >
+                  <option value="all">Semua Prioritas</option>
+                  <option value="high">🚨 Darurat</option>
+                  <option value="medium">⚠️ Penting</option>
+                  <option value="low">✅ Normal</option>
+                </select>
+              </div>
+              <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">{issues.length} Laporan</span>
+            </div>
           </div>
           
           <div className="p-0">
-            {issues.length === 0 ? (
+            {isLoadingIssues ? (
+              <div className="py-20 flex flex-col items-center justify-center space-y-4">
+                <div className="w-10 h-10 border-4 border-slate-200 border-t-red-500 rounded-full animate-spin" />
+                <p className="text-xs font-bold text-slate-400 uppercase animate-pulse">Memuat laporan...</p>
+              </div>
+            ) : issues.length === 0 ? (
               <div className="text-center py-20 text-slate-600 dark:text-[#B4B4C8]">
                 <div className="w-16 h-16 bg-slate-100 dark:bg-[#32324A] rounded-full flex items-center justify-center mx-auto mb-4">
                   <CheckCircle className="w-8 h-8 opacity-20" />
                 </div>
-                <p className="font-semibold italic">Semua fasilitas dalam kondisi baik.</p>
+                <p className="font-semibold italic">Tidak ada laporan untuk filter ini.</p>
               </div>
             ) : (
-              <div className="divide-y divide-slate-100 dark:divide-[#3F3F5A]/20">
-                {issues.map((issue) => (
-                  <div key={issue.id} className="p-6 flex flex-col md:flex-row md:items-center justify-between gap-6 hover:bg-slate-50/50 dark:hover:bg-[#32324A]/20 transition-all duration-300">
-                    <div className="flex gap-5">
-                      <div className={`mt-1 shrink-0 p-3 rounded-xl ${issue.status === 'resolved' ? 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400' : 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400'}`}>
-                        {issue.status === 'resolved' ? <CheckCircle className="w-6 h-6" /> : <AlertTriangle className="w-6 h-6" />}
-                      </div>
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-3">
-                          <h4 className="font-bold text-slate-900 dark:text-[#F5F5F5] text-lg">Ruangan: {issue.roomName || issue.roomId}</h4>
-                          {issue.severity && (
-                            <span className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider ${
-                              issue.severity === 'high' ? 'bg-red-500 text-white shadow-lg shadow-red-500/20' : 
-                              issue.severity === 'medium' ? 'bg-orange-500 text-white' : 
-                              'bg-blue-500 text-white'
-                            }`}>
-                              {issue.severity === 'high' ? 'Darurat' : issue.severity === 'medium' ? 'Penting' : 'Minor'}
-                            </span>
-                          )}
+              <>
+                <div className="divide-y divide-slate-100 dark:divide-[#3F3F5A]/20">
+                  {issues.map((issue) => (
+                    <div key={issue.id} className="p-6 flex flex-col md:flex-row md:items-center justify-between gap-6 hover:bg-slate-50/50 dark:hover:bg-[#32324A]/20 transition-all duration-300">
+                      <div className="flex gap-5">
+                        <div className={`mt-1 shrink-0 p-3 rounded-xl ${issue.status === 'resolved' ? 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400' : (issue.severity === 'high' ? 'bg-red-500/10 text-red-500 ring-2 ring-red-500/20' : issue.severity === 'medium' ? 'bg-yellow-500/10 text-yellow-600' : 'bg-green-500/10 text-green-600')}`}>
+                          {issue.status === 'resolved' ? <CheckCircle className="w-6 h-6" /> : (issue.severity === 'high' ? <AlertTriangle className="w-6 h-6 animate-pulse" /> : <AlertTriangle className="w-6 h-6" />)}
                         </div>
-                        <p className="text-sm text-slate-600 dark:text-[#B4B4C8] leading-relaxed">{issue.description}</p>
-                        <div className="flex items-center gap-3 mt-4 text-[11px] font-medium text-slate-400">
-                          <span className="flex items-center gap-1"><User className="w-3 h-3" /> {issue.userName || issue.userId}</span>
-                          <span className="w-1 h-1 rounded-full bg-slate-300 dark:bg-slate-700" />
-                          <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {issue.createdAt ? new Date(issue.createdAt.toMillis()).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' }) : '-'}</span>
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-3">
+                            <h4 className="font-bold text-slate-900 dark:text-[#F5F5F5] text-lg">Ruangan: {issue.roomName || issue.roomId}</h4>
+                            {issue.severity && (
+                              <span className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider flex items-center gap-1 ${
+                                issue.severity === 'high' ? 'bg-red-600 text-white shadow-lg shadow-red-600/20' : 
+                                issue.severity === 'medium' ? 'bg-yellow-500 text-white shadow-lg shadow-yellow-500/20' : 
+                                'bg-green-500 text-white'
+                              }`}>
+                                {issue.severity === 'high' ? '🚨 Darurat' : issue.severity === 'medium' ? '⚠️ Penting' : '✅ Normal'}
+                              </span>
+                            )}
+                            {issue.status === 'resolved' && (
+                              <span className="bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-400 px-2 py-0.5 rounded-md text-[10px] font-bold uppercase">Selesai</span>
+                            )}
+                          </div>
+                          <p className="text-sm text-slate-600 dark:text-[#B4B4C8] leading-relaxed">{issue.description}</p>
+                          <div className="flex items-center gap-3 mt-4 text-[11px] font-medium text-slate-400">
+                            <span className="flex items-center gap-1"><User className="w-3 h-3" /> {issue.userName || issue.userId}</span>
+                            <span className="w-1 h-1 rounded-full bg-slate-300 dark:bg-slate-700" />
+                            <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {issue.createdAt ? new Date(issue.createdAt.toMillis()).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' }) : '-'}</span>
+                          </div>
                         </div>
                       </div>
+                      
+                      {issue.status !== 'resolved' && (
+                        <button 
+                          onClick={() => handleResolve(issue)}
+                          className="px-6 py-3 rounded-xl bg-slate-900 dark:bg-[#32324A] text-white dark:text-brand-dark-accent hover:bg-brand-600 dark:hover:bg-[#3F3F5A] hover:scale-105 active:scale-95 transition-all text-xs font-bold shadow-lg shadow-slate-200 dark:shadow-none whitespace-nowrap"
+                        >
+                          Tandai Selesai
+                        </button>
+                      )}
                     </div>
-                    
-                    {issue.status !== 'resolved' && (
+                  ))}
+                </div>
+
+                {/* Pagination / Load More for Monitoring Fasilitas */}
+                {severityFilter === 'all' && (
+                  <div className="p-4 bg-slate-50 dark:bg-[#32324A]/30 border-t border-slate-100 dark:border-[#3F3F5A]/20 flex justify-center">
+                    {issueLimit >= 50 ? (
                       <button 
-                        onClick={() => handleResolve(issue)}
-                        className="px-6 py-3 rounded-xl bg-slate-900 dark:bg-[#32324A] text-white dark:text-brand-dark-accent hover:bg-brand-600 dark:hover:bg-[#3F3F5A] hover:scale-105 active:scale-95 transition-all text-xs font-bold shadow-lg shadow-slate-200 dark:shadow-none whitespace-nowrap"
+                        onClick={() => setIssueLimit(10)}
+                        className="text-[10px] font-black uppercase text-red-600 dark:text-red-400 hover:underline flex items-center gap-1"
                       >
-                        Tandai Selesai
+                        Tampilkan Lebih Sedikit (Ringkas)
                       </button>
+                    ) : issues.length >= issueLimit ? (
+                      <button 
+                        onClick={() => setIssueLimit(prev => prev + 10)}
+                        className="text-[10px] font-black uppercase text-brand-600 dark:text-brand-dark-accent hover:underline flex items-center gap-1"
+                      >
+                        Muat Lebih Banyak Laporan
+                      </button>
+                    ) : (
+                      <p className="text-[10px] font-bold text-slate-400 uppercase italic">Semua laporan telah ditampilkan</p>
                     )}
                   </div>
-                ))}
-              </div>
+                )}
+              </>
             )}
           </div>
         </div>

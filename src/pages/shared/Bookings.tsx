@@ -268,6 +268,17 @@ Harap tunjukkan bukti ini kepada petugas jika diminta.`;
                     <span>{t.booking.reason_label}: {booking.reason}</span>
                   </div>
                 </div>
+
+                {booking.displayStatus === 'rejected' && booking.rejectionReason && (
+                  <div className="mt-2 p-3 bg-red-500/10 border border-red-500/20 rounded-xl">
+                    <p className="text-xs font-bold text-red-500 mb-1 flex items-center gap-1">
+                      <XCircle className="w-3 h-3" /> Alasan Penolakan:
+                    </p>
+                    <p className="text-sm text-slate-700 dark:text-[#F5F5F5] italic">
+                      "{booking.rejectionReason}"
+                    </p>
+                  </div>
+                )}
               </div>
 
               <div className="flex items-center gap-3 flex-wrap">

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { AlertTriangle, Loader2, CheckCircle2 } from 'lucide-react';
 import { collection, query, where, getDocs, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
@@ -15,6 +16,7 @@ interface ReportIssueModalProps {
 
 export default function ReportIssueModal({ isOpen, onClose, initialRoomId, initialRoomName }: ReportIssueModalProps) {
   const { user, profile } = useAuth();
+  const navigate = useNavigate();
   const [rooms, setRooms] = useState<any[]>([]);
   const [loadingRooms, setLoadingRooms] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -24,7 +26,7 @@ export default function ReportIssueModal({ isOpen, onClose, initialRoomId, initi
     roomId: initialRoomId || '',
     roomName: initialRoomName || '',
     description: '',
-    severity: 'medium' // low, medium, high
+    severity: 'medium' // low, medium (Penting), high (Darurat)
   });
 
   useEffect(() => {
@@ -58,9 +60,29 @@ export default function ReportIssueModal({ isOpen, onClose, initialRoomId, initi
       return;
     }
 
+    if (!profile?.profileCompleted && profile?.role !== 'admin') {
+      toast.error('Lengkapi profil Anda terlebih dahulu sebelum membuat laporan.');
+      navigate('/profil');
+      onClose();
+      return;
+    }
+
+    if (!user?.emailVerified && profile?.role !== 'admin') {
+      toast.error('Verifikasi email Anda terlebih dahulu sebelum membuat laporan.');
+      navigate('/profil');
+      onClose();
+      return;
+    }
+
     setSubmitting(true);
     try {
       // Create issue report
+      const severityLabels: Record<string, string> = {
+        low: 'Rendah',
+        medium: 'Penting',
+        high: 'Darurat'
+      };
+
       const issueData = {
         roomId: formData.roomId,
         roomName: formData.roomName || rooms.find(r => r.id === formData.roomId)?.name || 'Unknown',
@@ -76,9 +98,10 @@ export default function ReportIssueModal({ isOpen, onClose, initialRoomId, initi
 
       // Create notification for admin/staff
       try {
+        const severityIcon = formData.severity === 'high' ? '🚨' : formData.severity === 'medium' ? '⚠️' : '🔔';
         await addDoc(collection(db, 'notifications'), {
           targetRole: 'admin',
-          title: '🚨 Laporan Kerusakan Baru',
+          title: `${severityIcon} Laporan ${severityLabels[formData.severity]} Baru`,
           message: `${profile?.name} melaporkan masalah di ${issueData.roomName}: ${formData.description.substring(0, 30)}...`,
           type: 'issue',
           isRead: false,
@@ -178,20 +201,25 @@ export default function ReportIssueModal({ isOpen, onClose, initialRoomId, initi
                 Tingkat Urgensi
               </label>
               <div className="grid grid-cols-3 gap-3">
-                {['low', 'medium', 'high'].map((level) => (
+                {[
+                  { id: 'low', label: 'Rendah', color: 'bg-green-500', shadow: 'shadow-green-500/20' },
+                  { id: 'medium', label: 'Penting', color: 'bg-yellow-500', shadow: 'shadow-yellow-500/20' },
+                  { id: 'high', label: 'Darurat', color: 'bg-red-600', shadow: 'shadow-red-600/20' }
+                ].map((level) => (
                   <button
-                    key={level}
+                    key={level.id}
                     type="button"
-                    onClick={() => setFormData({ ...formData, severity: level })}
-                    className={`py-2.5 rounded-xl border text-xs font-bold transition-all capitalize ${
-                      formData.severity === level 
-                        ? (level === 'low' ? 'bg-green-500 text-white border-green-500 shadow-lg shadow-green-500/20' : 
-                           level === 'medium' ? 'bg-brand-700 text-white border-brand-700 shadow-lg shadow-brand-700/20' : 
-                           'bg-red-600 text-white border-red-600 shadow-lg shadow-red-600/20')
+                    onClick={() => setFormData({ ...formData, severity: level.id })}
+                    className={`py-2.5 rounded-xl border text-xs font-bold transition-all ${
+                      formData.severity === level.id 
+                        ? `${level.color} text-white border-transparent shadow-lg ${level.shadow} scale-[1.02]`
                         : 'bg-white dark:bg-[#32324A] text-slate-500 border-slate-200 dark:border-[#3F3F5A]/50 hover:border-slate-300 dark:hover:border-slate-600'
                     }`}
                   >
-                    {level === 'low' ? 'Rendah' : level === 'medium' ? 'Sedang' : 'Tinggi'}
+                    <div className="flex flex-col items-center gap-1">
+                      <span>{level.id === 'high' ? '🚨' : level.id === 'medium' ? '⚠️' : '✅'}</span>
+                      <span>{level.label}</span>
+                    </div>
                   </button>
                 ))}
               </div>

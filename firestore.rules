@@ -103,7 +103,7 @@ service cloud.firestore {
     function isAdmin() {
       return isAuthenticated() && (
         request.auth.token.get('role', 'user') == 'admin' ||
-        request.auth.token.email in ["gama96954@gmail.com", "mirejrohmad@gmail.com"] ||
+        (request.auth.token.email in ["gama96954@gmail.com", "mirejrohmad@gmail.com"]) ||
         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'user') == 'admin' &&
          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('deleted', false) == false)
@@ -140,7 +140,7 @@ service cloud.firestore {
     // Domain Validators
     // ===============================================================
     function isValidUser(data) {
-      return hasOnlyAllowedFields(['uid', 'email', 'name', 'role', 'nim', 'identifier', 'whatsapp', 'whatsappNumber', 'division', 'photoURL', 'profileCompleted', 'notifPortal', 'notifEmail', 'notifWhatsApp', 'reminderMinutes', 'deleted', 'deletedAt', 'deletedBy', 'createdAt', 'updatedAt', 'lastLogin']) &&
+      return hasOnlyAllowedFields(['uid', 'email', 'name', 'role', 'nim', 'identifier', 'whatsapp', 'whatsappNumber', 'division', 'photoURL', 'profileCompleted', 'notifPortal', 'notifEmail', 'notifWhatsApp', 'reminderMinutes', 'pendingEmail', 'deleted', 'deletedAt', 'deletedBy', 'createdAt', 'updatedAt', 'lastLogin']) &&
              hasRequiredFields(['uid', 'email', 'name', 'role', 'createdAt']) &&
              data.uid is string && data.uid.size() > 0 && data.uid.size() < 128 &&
              data.email is string && isValidEmail(data.email) && data.email.size() < 100 &&
@@ -219,10 +219,10 @@ service cloud.firestore {
              (!('userId' in data) || (data.userId is string && data.userId.size() > 0 && data.userId.size() < 128)) &&
              (!('targetRole' in data) || (data.targetRole is string && data.targetRole in ['mahasiswa', 'dosen', 'admin', 'staff'])) &&
              data.title is string && data.title.size() > 0 && data.title.size() < 200 &&
-             data.message is string && data.message.size() > 0 && data.message.size() < 1000 &&
+             data.message is string && data.message.size() > 0 && data.message.size() < 2000 &&
              data.type in ['reminder', 'approved', 'rejected', 'info', 'warning', 'booking', 'issue'] &&
              data.isRead is bool &&
-             (!('meta' in data) || (data.meta is string && data.meta.size() < 500)) &&
+             (!('meta' in data) || (data.meta is string && data.meta.size() < 1000)) &&
              data.createdAt is timestamp;
     }
 
@@ -236,19 +236,37 @@ service cloud.firestore {
     }
 
     function isValidRoleChangeRequest(data) {
-      return hasOnlyAllowedFields(['email', 'currentRole', 'requestedRole', 'reason', 'status', 'createdAt', 'updatedAt']) &&
+      return hasOnlyAllowedFields(['email', 'currentRole', 'requestedRole', 'reason', 'status', 'createdAt', 'updatedAt', 'rejectReason']) &&
              hasRequiredFields(['email', 'currentRole', 'requestedRole', 'reason', 'status', 'createdAt']) &&
-             data.email is string && isValidEmail(data.email) &&
+             data.email is string &&
              data.currentRole is string &&
              data.requestedRole is string &&
-             data.reason is string && data.reason.size() > 0 && data.reason.size() < 2000 &&
+             data.reason is string &&
              data.status in ['pending', 'approved', 'rejected'] &&
-             data.createdAt is timestamp;
+             data.createdAt is timestamp &&
+             (!('rejectReason' in data) || data.rejectReason == null || data.rejectReason is string) &&
+             (!('updatedAt' in data) || data.updatedAt is timestamp);
+    }
+
+    function isValidAdminContact(data) {
+      return hasOnlyAllowedFields(['name', 'whatsapp', 'role', 'isActive', 'updatedAt']) &&
+             hasRequiredFields(['name', 'whatsapp']) &&
+             data.name is string && data.name.size() < 100 &&
+             data.whatsapp is string && data.whatsapp.size() < 20 &&
+             (!('role' in data) || data.role is string) &&
+             (!('isActive' in data) || data.isActive is bool) &&
+             (!('updatedAt' in data) || data.updatedAt is timestamp);
     }
 
     // ===============================================================
     // Rules
     // ===============================================================
+    match /admin_contacts/{contactId} {
+      allow read: if true;
+      allow create, update: if isAdmin() && isValidAdminContact(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
     match /otp_resets/{email} {
       // We allow reading IF the user knows the OTP (verification query)
       // or simply for simplicity in this custom flow, we allow read by ID.
@@ -259,7 +277,7 @@ service cloud.firestore {
     }
 
     match /users/{userId} {
-      allow read: if isOwner(userId) || isStaff();
+      allow read: if isOwner(userId) || isStaff() || (isAuthenticated() && resource.data.get('role', 'user') in ['staff', 'admin']);
       allow list: if isStaff();
       allow create: if isAuthenticated() && isOwner(userId) && isValidUser(request.resource.data) &&
                     request.resource.data.uid == request.auth.uid &&
@@ -270,12 +288,12 @@ service cloud.firestore {
                        request.resource.data.email == "mirejrohmad@gmail.com" ||
                        exists(/databases/$(database)/documents/role_mappings/$(request.resource.data.email))) 
                       : true);
-      allow update: if isAuthenticated() && isValidUser(request.resource.data) &&
-                    areImmutableFieldsUnchanged(['uid', 'createdAt']) &&
-                    (
-                      (isOwner(userId) && areImmutableFieldsUnchanged(['role', 'deleted', 'deletedAt', 'deletedBy'])) || 
-                      isStaff()
-                    );
+      allow update: if isAuthenticated() && (
+                    (isValidUser(request.resource.data) && areImmutableFieldsUnchanged(['uid', 'createdAt']) &&
+                     ((isOwner(userId) && areImmutableFieldsUnchanged(['role', 'deleted', 'deletedAt', 'deletedBy'])) || isStaff()))
+                    ||
+                    (isStaff() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role', 'updatedAt', 'deleted', 'deletedAt', 'deletedBy']))
+                  );
       allow delete: if isAdmin();
     }
 
@@ -314,9 +332,16 @@ service cloud.firestore {
     }
 
     match /notifications/{notificationId} {
-      allow read: if isAuthenticated();
-      allow create: if isAuthenticated() && isValidNotification(request.resource.data) &&
-                    (isStaff() || ('userId' in request.resource.data && request.resource.data.userId == request.auth.uid) || ('targetRole' in request.resource.data && request.resource.data.targetRole == 'admin'));
+      allow read: if isAuthenticated() && (
+        (resource.data.userId == request.auth.uid) || 
+        (resource.data.targetRole == 'admin' && isStaff()) ||
+        (resource.data.targetRole == 'staff' && isStaff())
+      );
+      allow create: if isAuthenticated() && (
+                    (isValidNotification(request.resource.data) && (isStaff() || ('userId' in request.resource.data && request.resource.data.userId == request.auth.uid) || ('targetRole' in request.resource.data && request.resource.data.targetRole == 'admin')))
+                    ||
+                    (isStaff() && request.resource.data.keys().hasAll(['title', 'message', 'type', 'isRead', 'createdAt']))
+                  );
       allow update: if isAuthenticated() && isValidNotification(request.resource.data) &&
                     areImmutableFieldsUnchanged(['userId', 'title', 'message', 'type', 'createdAt', 'meta', 'targetRole']) &&
                     (
@@ -339,12 +364,20 @@ service cloud.firestore {
     }
 
     match /role_change_requests/{requestId} {
-      allow read: if isStaff();
+      allow read: if isStaff() || (isAuthenticated() && resource.data.email == request.auth.token.email);
       allow create: if isValidRoleChangeRequest(request.resource.data) && 
                     request.resource.data.status == 'pending' &&
                     request.resource.data.createdAt == request.time;
-      allow update: if isStaff() && isValidRoleChangeRequest(request.resource.data) &&
-                    areImmutableFieldsUnchanged(['email', 'currentRole', 'requestedRole', 'reason', 'createdAt']);
+      allow update: if isStaff() && (
+        // Allow status updates and rejectReason
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'rejectReason', 'updatedAt']) &&
+         request.resource.data.status in ['approved', 'rejected'] &&
+         (!('rejectReason' in request.resource.data) || request.resource.data.rejectReason == null || request.resource.data.rejectReason is string))
+        ||
+        // Fallback for full validation if needed
+        (isValidRoleChangeRequest(request.resource.data) && 
+         areImmutableFieldsUnchanged(['email', 'currentRole', 'requestedRole', 'reason', 'createdAt']))
+      );
       allow delete: if isAdmin();
     }
   }

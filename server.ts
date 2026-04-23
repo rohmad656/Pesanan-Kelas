@@ -338,6 +338,104 @@ async function startServer() {
     }
   });
 
+  app.post("/api/admin/process-role-request", async (req, res) => {
+    const { requestId, action, rejectReason, adminToken } = req.body;
+    if (!requestId || !action || !adminToken) {
+      return res.status(400).json({ error: "Missing required fields" });
+    }
+
+    try {
+      const decodedToken = await admin.auth().verifyIdToken(adminToken);
+      const db = getDb();
+
+      // 1. Verify requester is admin
+      const requesterDoc = await db.collection("users").doc(decodedToken.uid).get();
+      const requesterData = requesterDoc.data();
+
+      if (!requesterData || requesterData.role !== "admin") {
+        return res.status(403).json({ error: "Only admins can process role requests" });
+      }
+
+      // 2. Get the request document
+      const requestRef = db.collection("role_change_requests").doc(requestId);
+      const requestDoc = await requestRef.get();
+
+      if (!requestDoc.exists) {
+        return res.status(404).json({ error: "Role request not found" });
+      }
+
+      const requestData = requestDoc.data()!;
+      const userEmail = requestData.email;
+      const requestedRole = requestData.requestedRole;
+
+      // 3. Start a batch or transaction
+      const batch = db.batch();
+
+      // A. Update the request status
+      batch.update(requestRef, {
+        status: action === 'approve' ? 'approved' : 'rejected',
+        rejectReason: rejectReason || null,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+
+      // B. If approved, update user document and claims
+      let targetUid = "";
+      if (action === 'approve') {
+        const userSnap = await db.collection("users").where("email", "==", userEmail).limit(1).get();
+        if (!userSnap.empty) {
+          const userDoc = userSnap.docs[0];
+          targetUid = userDoc.id;
+          batch.update(userDoc.ref, {
+            role: requestedRole,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+          });
+          
+          // Custom claims (must be done outside batch)
+          await admin.auth().setCustomUserClaims(targetUid, { role: requestedRole });
+        } else {
+          // If no user profile exists yet, update role_mappings
+          const mappingRef = db.collection("role_mappings").doc(userEmail);
+          batch.set(mappingRef, { role: requestedRole }, { merge: true });
+        }
+      }
+
+      // C. Audit Log
+      batch.set(db.collection("audit_logs").doc(), {
+        action: `ROLE_REQUEST_${action.toUpperCase()}`,
+        targetEmail: userEmail,
+        performedBy: decodedToken.uid,
+        timestamp: admin.firestore.FieldValue.serverTimestamp(),
+        details: `${action === 'approve' ? 'Disetujui' : 'Ditolak'} permintaan role menjadi ${requestedRole} untuk ${userEmail}.${rejectReason ? ' Alasan: ' + rejectReason : ''}`
+      });
+
+      // D. Notification
+      if (targetUid || action !== 'approve') {
+        // If we don't have targetUid, we can't easily notify via userId unless we search again
+        // But if they are approved, they definitely have a profile or will soon.
+        // For now, only notify if we found the UID
+        if (targetUid) {
+          batch.set(db.collection("notifications").doc(), {
+            userId: targetUid,
+            title: `Permintaan Role ${action === 'approve' ? 'Disetujui' : 'Ditolak'}`,
+            message: action === 'approve' 
+              ? `Admin telah menyetujui permintaan Anda untuk menjadi ${requestedRole.toUpperCase()}.`
+              : `Maaf, permintaan perubahan peran Anda ditolak oleh Admin.${rejectReason ? ' Alasan: ' + rejectReason : ''}`,
+            type: action === 'approve' ? 'approved' : 'rejected',
+            isRead: false,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            meta: '/profil'
+          });
+        }
+      }
+
+      await batch.commit();
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Error processing role request:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   app.post("/api/admin/update-user-role", async (req, res) => {
     const { targetUid, newRole, adminToken } = req.body;
     if (!targetUid || !newRole || !adminToken) {
@@ -387,23 +485,25 @@ async function startServer() {
 
   // NIM Availability Check (For registration flow)
   app.get("/api/auth/check-nim", async (req, res) => {
-    const { nim } = req.query;
+    const { nim, excludeUid } = req.query;
     if (!nim || typeof nim !== 'string') {
       return res.status(400).json({ error: "NIM is required" });
     }
 
     try {
       const db = getDb();
-      // Use query without deleted check since we are moving to hard delete but defensive against orphans
-      const q = await db.collection("users").where("nim", "==", nim).get();
+      let qBuilder = db.collection("users").where("nim", "==", nim);
+      const q = await qBuilder.get();
       
       if (q.empty) {
         return res.json({ available: true });
       }
 
-      // Defense against zombies: check if any found records actually have Auth
+      // If we found docs, check if any of them are alive AND NOT the current user
       let foundAlive = false;
       for (const doc of q.docs) {
+        if (excludeUid && doc.id === excludeUid) continue; // Skip the user themselves
+        
         try {
           const u = await admin.auth().getUser(doc.id);
           if (u) {
@@ -414,7 +514,6 @@ async function startServer() {
           if (e.code !== 'auth/user-not-found') {
             console.error("Auth check error during NIM validation:", e);
           }
-          // if not found, it's a zombie, we allow re-use
         }
       }
 
@@ -422,7 +521,7 @@ async function startServer() {
         return res.json({ available: false });
       }
 
-      res.json({ available: true, note: "Found orphan record with this NIM, but Auth is free." });
+      res.json({ available: true });
     } catch (error: any) {
       console.error("Check NIM Error:", error);
       res.status(500).json({ error: "Internal server error" });
@@ -431,7 +530,7 @@ async function startServer() {
 
   // Email Availability Check (For registration/profile update)
   app.get("/api/auth/check-email", async (req, res) => {
-    const { email } = req.query;
+    const { email, excludeUid } = req.query;
     if (!email || typeof email !== 'string') {
       return res.status(400).json({ error: "Email is required" });
     }
@@ -445,11 +544,13 @@ async function startServer() {
         return res.json({ available: true });
       }
 
-      // Check if ANY of the found records are "alive" in Auth
+      // Check if ANY of the found records are "alive" in Auth AND NOT the current user
       let foundAlive = false;
       let activeUser: any = null;
 
       for (const doc of q.docs) {
+        if (excludeUid && doc.id === excludeUid) continue;
+
         try {
           const u = await admin.auth().getUser(doc.id);
           if (u) {
@@ -473,9 +574,8 @@ async function startServer() {
         });
       }
 
-      // If we reach here, we found record(s) in Firestore but NONE in Auth
-      // These are orphan records blocking the system.
-      res.json({ available: true, note: "Found orphan Firestore records, but Auth is free." });
+      // If we reach here, we found record(s) in Firestore but NONE in Auth (or they match excludeUid)
+      res.json({ available: true });
     } catch (error: any) {
       console.error("Check Email Error:", error);
       res.status(500).json({ error: "Internal server error" });

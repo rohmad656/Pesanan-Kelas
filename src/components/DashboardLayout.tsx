@@ -19,13 +19,14 @@ import {
   AlertCircle,
   Moon,
   Sun,
-  ShieldCheck
+  ShieldCheck,
+  CheckCircle2
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { collection, query, where, onSnapshot, writeBatch, doc, serverTimestamp, updateDoc, or } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import toast from 'react-hot-toast';
-import { PROJECT_NAME } from '../constants';
+import { PROJECT_NAME, SUPPORT_EMAIL, SUPPORT_EMAIL_ALT } from '../constants';
 
 import { useData } from '../contexts/DataContext';
 
@@ -39,6 +40,44 @@ export default function DashboardLayout() {
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [adminContacts, setAdminContacts] = useState<any[]>([]);
+  const [hasRoleChanged, setHasRoleChanged] = useState<string | null>(null);
+  const toastHistory = React.useRef<Set<string>>(new Set());
+  const initialRole = React.useRef<string | null>(localStorage.getItem('user_role_last_session'));
+
+  // Fetch Admin Contacts globally
+  useEffect(() => {
+    if (!profile) return;
+    const q = query(collection(db, 'admin_contacts'), where('isActive', '==', true));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      setAdminContacts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    }, (error) => console.error("Admin contacts fetch error:", error));
+    return () => unsubscribe();
+  }, [profile?.uid]);
+
+  // PERSISTENT ROLE TRACKING: Sync role and persist it for session detection
+  useEffect(() => {
+    if (profile?.role) {
+      if (!initialRole.current) {
+        initialRole.current = profile.role;
+        localStorage.setItem('user_role_last_session', profile.role);
+      }
+    }
+  }, [profile?.role]);
+
+  // SESSION REFRESH: Detect role change (Upgrade/Approval) and trigger transition
+  useEffect(() => {
+    if (profile?.role && initialRole.current && profile.role !== initialRole.current) {
+      // Role has changed!
+      setHasRoleChanged(profile.role);
+      
+      // Delay logout so user can read the message, ensuring custom claims sync on re-login
+      const timer = setTimeout(() => {
+        handleLogout();
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [profile?.role]);
 
   // Set role-based theme colors
   useEffect(() => {
@@ -170,15 +209,20 @@ export default function DashboardLayout() {
     const unsubscribe = onSnapshot(q, (snapshot) => {
       snapshot.docChanges().forEach((change) => {
         if (change.type === 'added') {
-          const data = change.doc.data();
+          const data = change.doc.data() as any;
+          const notifId = change.doc.id;
+          
           // Show toast for new, unread notifications created recently (last 10s)
-          // to avoid spamming on initial component load or old unread notifs
-          if (!data.isRead && data.createdAt) {
+          // and only if we haven't toasted it in this session already
+          if (!data.isRead && data.createdAt && !toastHistory.current.has(notifId)) {
             const now = Date.now();
             const createdAt = data.createdAt.toMillis?.() || now;
+            // Strict 10s window to avoid old unread notifs firing on login
             if (now - createdAt < 10000) {
+              toastHistory.current.add(notifId);
               toast(data.title, {
-                icon: '🔔',
+                id: notifId, // Explicitly use ID for deduplication
+                icon: data.type === 'approved' ? '✅' : data.type === 'rejected' ? '❌' : '🔔',
                 duration: 4000,
               });
             }
@@ -186,26 +230,18 @@ export default function DashboardLayout() {
         }
       });
 
-      if (!snapshot.empty) {
-        setNotifications(prev => {
-          const newNotifs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
-          // Deduplicate based on ID to avoid double entries in UI
-          const combined = [...newNotifs];
-          const unique = Array.from(new Map(combined.map(item => [item.id, item])).values())
-            .sort((a, b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0));
-          
-          setUnreadCount(unique.filter(n => !n.isRead).length);
-          return unique;
-        });
-      } else {
-        setNotifications([]);
-        setUnreadCount(0);
-      }
+      const newNotifs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
+      // Deduplicate based on ID to avoid double entries in UI
+      const unique = Array.from(new Map(newNotifs.map(item => [item.id, item])).values())
+        .sort((a: any, b: any) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0));
+      
+      setNotifications(unique);
+      setUnreadCount(unique.filter((n: any) => !n.isRead).length);
     }, (error) => {
       console.error("Notification listener error:", error);
     });
     return () => unsubscribe();
-  }, [profile]);
+  }, [profile?.uid, profile?.role]);
 
   const markAllRead = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -372,6 +408,52 @@ export default function DashboardLayout() {
             <LogOut className="w-5 h-5 group-hover:scale-110 transition-transform" />
             <span className="font-medium">Keluar</span>
           </button>
+
+          {/* Technical Support Section - Visible only to Mahasiswa and Dosen */}
+          {profile?.role !== 'admin' && profile?.role !== 'staff' && (
+            <div className="mt-4 px-4 py-3 bg-brand-50/30 dark:bg-slate-800/30 rounded-xl border border-brand-100/50 dark:border-slate-700/50">
+              <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1.5 flex items-center gap-1.5">
+                <HelpCircle className="w-3 h-3" /> Bantuan Teknis
+              </p>
+              <div className="space-y-2">
+                {adminContacts.length > 0 ? (
+                  adminContacts.map(contact => (
+                    <a 
+                      key={contact.id}
+                      href={`https://wa.me/${contact.whatsapp.replace(/\D/g, '')}`} 
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-2 group/contact"
+                    >
+                      <div className="w-6 h-6 rounded-lg bg-green-500/10 flex items-center justify-center shrink-0 group-hover/contact:bg-green-500/20 transition-colors">
+                         <span className="text-[10px]">🟢</span>
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-[10px] font-bold text-slate-800 dark:text-[#F5F5F5] truncate">{contact.name}</p>
+                        <p className="text-[9px] text-green-600 dark:text-green-400 font-medium truncate">{contact.whatsapp}</p>
+                      </div>
+                    </a>
+                  ))
+                ) : (
+                  <div className="space-y-1">
+                    {SUPPORT_EMAIL ? (
+                      <>
+                        <a 
+                          href={`mailto:${SUPPORT_EMAIL}`} 
+                          className="block text-[10px] text-brand-600 dark:text-brand-dark-accent hover:underline truncate"
+                          title="Gunakan email ini untuk bantuan teknis aplikasi Kampus Booking."
+                        >
+                          Email Support: {SUPPORT_EMAIL}
+                        </a>
+                      </>
+                    ) : (
+                      <p className="text-[10px] text-slate-500 italic">Hubungi admin kampus untuk bantuan.</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </aside>
 
@@ -558,6 +640,41 @@ export default function DashboardLayout() {
           </div>
         </header>
         <div className="flex-1 overflow-auto flex flex-col focus:outline-none relative">
+          {/* Role Change Overlay */}
+          <AnimatePresence>
+            {hasRoleChanged && (
+              <motion.div 
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 z-[100] bg-[#190622]/95 backdrop-blur-md flex flex-col items-center justify-center text-center p-6"
+              >
+                <motion.div 
+                  initial={{ scale: 0.9, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  transition={{ delay: 0.2 }}
+                  className="bg-white dark:bg-[#1E1E2F] p-8 rounded-3xl shadow-2xl border border-slate-200 dark:border-[#3F3F5A]/20 max-w-md w-full"
+                >
+                  <div className="w-20 h-20 bg-green-100 dark:bg-green-500/20 rounded-full flex items-center justify-center mx-auto mb-6 text-green-600 dark:text-green-400 border-4 border-green-50 dark:border-green-900/10">
+                    <CheckCircle2 className="w-10 h-10" />
+                  </div>
+                  <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">Peran Diperbarui!</h2>
+                  <p className="text-slate-600 dark:text-[#B4B4C8] mb-6">
+                    Selamat! Permintaan Anda untuk menjadi <span className="font-bold text-brand-600 dark:text-brand-dark-accent capitalize">{hasRoleChanged}</span> telah disetujui oleh Administrator.
+                  </p>
+                  <div className="bg-brand-50 dark:bg-brand-500/5 p-4 rounded-2xl mb-6">
+                     <p className="text-xs text-brand-700 dark:text-brand-dark-accent font-bold uppercase tracking-widest mb-1 font-mono">Penting</p>
+                     <p className="text-sm text-slate-700 dark:text-[#D1D1E0]">Anda akan segera dialihkan ke halaman login untuk memperbarui sesi akun Anda.</p>
+                  </div>
+                  <div className="flex items-center justify-center gap-2 text-slate-400 dark:text-[#6A6A8A]">
+                    <div className="w-4 h-4 border-2 border-slate-200 border-t-brand-600 rounded-full animate-spin"></div>
+                    <span className="text-xs font-semibold animate-pulse">Menyiapkan pengalihan...</span>
+                  </div>
+                </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           {/* Profile Completion Prompt */}
           {profile && !profile.profileCompleted && location.pathname !== '/profil' && (
             <div className="bg-brand-50/50 dark:bg-brand-dark-accent-light/5 border-b border-brand-200 dark:border-brand-dark-accent-light/20 px-4 md:px-8 py-3 flex items-center justify-between gap-4">

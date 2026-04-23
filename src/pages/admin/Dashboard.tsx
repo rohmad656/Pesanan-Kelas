@@ -6,6 +6,7 @@ import { db, handleFirestoreError, OperationType } from '../../lib/firebase';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import BaseModal from '../../components/BaseModal';
+import toast from 'react-hot-toast';
 
 export default function AdminDashboard() {
   const { profile } = useAuth();
@@ -19,6 +20,7 @@ export default function AdminDashboard() {
   const [rejectingBooking, setRejectingBooking] = useState<any | null>(null);
   const [rejectionReason, setRejectionReason] = useState('');
   const [isRejecting, setIsRejecting] = useState(false);
+  const [isApproving, setIsApproving] = useState(false);
 
   useEffect(() => {
     // Listen to all bookings
@@ -62,6 +64,8 @@ export default function AdminDashboard() {
   }, []);
 
   const handleApprove = async (booking: any) => {
+    if (isApproving) return;
+    setIsApproving(true);
     try {
       await runTransaction(db, async (transaction) => {
         // 1. "Lock" the room document
@@ -117,8 +121,11 @@ export default function AdminDashboard() {
           lastBookingUpdate: serverTimestamp() 
         });
       });
+      toast.success('Pemesanan berhasil disetujui');
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `bookings/${booking.id}`);
+    } finally {
+      setIsApproving(false);
     }
   };
 
@@ -399,17 +406,19 @@ export default function AdminDashboard() {
                         <div className="flex items-center gap-2">
                           <button 
                             onClick={() => handleApprove(booking)}
-                            className="p-1.5 rounded-lg bg-green-100 text-green-600 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400 dark:hover:bg-green-900/50 transition-colors"
+                            disabled={isApproving || isRejecting}
+                            className="p-1.5 rounded-lg bg-green-100 text-green-600 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400 dark:hover:bg-green-900/50 transition-colors disabled:opacity-50"
                             title="Setujui"
                           >
-                            <CheckCircle className="w-4 h-4" />
+                            {isApproving ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
                           </button>
                           <button 
                             onClick={() => {
                               setRejectingBooking(booking);
                               setRejectionReason('');
                             }}
-                            className="p-1.5 rounded-lg bg-red-100 text-red-600 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/50 transition-colors"
+                            disabled={isApproving || isRejecting}
+                            className="p-1.5 rounded-lg bg-red-100 text-red-600 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/50 transition-colors disabled:opacity-50"
                             title="Tolak"
                           >
                             <XCircle className="w-4 h-4" />
@@ -451,7 +460,7 @@ export default function AdminDashboard() {
                 value={rejectionReason}
                 onChange={(e) => setRejectionReason(e.target.value)}
                 placeholder="Contoh: Bentrok jadwal / Ruangan tidak tersedia..."
-                className="w-full p-4 bg-slate-50 dark:bg-[#32324A] border border-slate-200 dark:border-[#3F3F5A]/50 rounded-2xl focus:outline-none focus:ring-2 focus:ring-red-500 text-sm min-h-[120px] resize-none"
+                className="w-full p-4 bg-slate-50 dark:bg-[#32324A] border border-slate-200 dark:border-[#3F3F5A]/50 rounded-2xl focus:outline-none focus:ring-2 focus:ring-red-500 text-sm text-slate-900 dark:text-[#F5F5F5] placeholder-slate-400 dark:placeholder-slate-500 min-h-[120px] resize-none"
               />
             </div>
 

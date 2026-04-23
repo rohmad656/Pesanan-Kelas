@@ -11,14 +11,17 @@ import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'motion/react';
 import { GoogleButton } from '../components/GoogleButton';
 import RoleChangeModal from '../components/RoleChangeModal';
+import { PROJECT_NAME, SUPPORT_EMAIL, SUPPORT_EMAIL_ALT } from '../constants';
 
 export default function Login() {
   const [role, setRole] = useState<Role>('mahasiswa');
-  const { login, emailLogin, emailRegister, sendOTPReset, verifyOTPReset, completeOTPReset, pendingRegistration, conflictInfo } = useAuth();
+  const { login, emailLogin, emailRegister, sendOTPReset, verifyOTPReset, completeOTPReset, pendingRegistration, conflictInfo, loginWithRedirect } = useAuth();
   const { setTheme } = useTheme();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+  const [loginStep, setLoginStep] = useState<string>('');
+  const [showRedirectOption, setShowRedirectOption] = useState(false);
   const [error, setError] = useState('');
   
   useEffect(() => {
@@ -195,11 +198,14 @@ export default function Login() {
         toast.success('Berhasil mendaftar dan masuk!');
         handleExit('/dashboard');
       } else {
+        setLoginStep('Mencari data akun...');
         await emailLogin(nim, password, role);
+        setLoginStep('Masuk ke Dashboard...');
         toast.success('Berhasil masuk!');
         handleExit('/dashboard');
       }
     } catch (err: any) {
+      setLoginStep('');
       console.error(err);
       if (err.code === 'custom/user-not-found') {
         setError('Akun tidak ditemukan. Pastikan Email atau NIM/NIP sudah benar.');
@@ -226,13 +232,29 @@ export default function Login() {
   const handleGoogleLogin = async () => {
     setGoogleLoading(true);
     setError('');
+    setLoginStep('Membuka jendela Google...');
+    
+    // Safety timeout to prevent infinite loading if popup hangs
+    const timeoutId = setTimeout(() => {
+      if (googleLoading) {
+        setGoogleLoading(false);
+        setLoginStep('');
+        setShowRedirectOption(true);
+        setError('Proses login terlalu lama. Silakan coba lagi atau gunakan metode Redirect di bawah ini.');
+      }
+    }, 45000); // 45 seconds timeout
+
     try {
       const result = await signInWithPopup(auth, googleProvider);
+      clearTimeout(timeoutId);
+      
       const currentUser = result.user;
+      setLoginStep('Memproses data profil...');
 
       // login() now automatically creates a skeleton profile, detects role, and validates against 'role' state
       const { isNewUser } = await login(role, currentUser);
 
+      setLoginStep('Menyiapkan dashboard...');
       if (isNewUser) {
         toast.success(`Akun Google berhasil terhubung!`);
         handleExit('/dashboard');
@@ -241,19 +263,29 @@ export default function Login() {
         handleExit('/dashboard');
       }
     } catch (err: any) {
+      clearTimeout(timeoutId);
+      setLoginStep('');
+      
+      if (err.code === 'auth/popup-closed-by-user') {
+        setGoogleLoading(false);
+        // Silently handle - users know they closed it.
+        return;
+      }
+      
       console.error("Google Login Error:", err);
       if (err.code === 'auth/popup-blocked') {
-        setError('Popup diblokir oleh browser. Jika Anda menggunakan Preview, pastikan Anda mengizinkan popup atau buka aplikasi di Tab Baru.');
-      } else if (err.code === 'auth/popup-closed-by-user') {
-        setGoogleLoading(false);
-        toast.error('Login dibatalkan (Popup ditutup).');
+        setShowRedirectOption(true);
+        setError('Popup diblokir oleh browser. Silakan izinkan popup untuk situs ini atau gunakan metode Redirect di bawah.');
       } else if (err.code === 'auth/cancelled-popup-request') {
         setGoogleLoading(false);
+      } else if (err.code === 'auth/network-request-failed') {
+        setError('Koneksi internet bermasalah. Silakan periksa jaringan Anda.');
       } else {
         setError(`Gagal masuk dengan Google: ${err.message || err.code || 'Kesalahan tidak diketahui'}. Tips: Coba buka di Tab Baru.`);
       }
     } finally {
       setGoogleLoading(false);
+      setLoginStep('');
     }
   };
 
@@ -407,7 +439,7 @@ export default function Login() {
                       type="button"
                       onClick={() => setRole(r)}
                       className={cn(
-                        "flex-1 py-2 px-3 text-sm font-semibold rounded-md transition-all duration-300 capitalize relative z-10",
+                        "flex-1 py-2 px-3 text-sm font-semibold rounded-md transition-all duration-300 capitalize relative z-10 hover:text-slate-700 dark:hover:text-white",
                         role === r 
                           ? "text-white" 
                           : "text-slate-500 dark:text-[#B4B4C8] hover:text-brand-700 dark:text-brand-dark-accent"
@@ -443,7 +475,7 @@ export default function Login() {
                         setIsRegistering(true);
                         setError('');
                       }}
-                      className="mt-2 px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-md font-medium transition-colors shadow-sm"
+                      className="mt-2 px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-md font-medium transition-all shadow-md hover:scale-105 active:scale-95"
                     >
                       Daftar Sekarang
                     </button>
@@ -457,15 +489,23 @@ export default function Login() {
                       >
                         Ajukan Perubahan Peran
                       </button>
-                      <Link to="/bantuan" className="text-[10px] text-slate-400 hover:text-[#B4B4C8] transition-colors">
-                        Butuh bantuan? Hubungi Admin
-                      </Link>
+                      <div className="mt-1 flex flex-col items-center gap-0.5">
+                        <span className="text-[9px] text-slate-500 italic">Gunakan email ini untuk bantuan teknis aplikasi {PROJECT_NAME}:</span>
+                        <a href={`mailto:${SUPPORT_EMAIL}`} className="text-[10px] text-brand-400 hover:text-brand-300 font-medium transition-colors">
+                          Email Support Kampus: {SUPPORT_EMAIL}
+                        </a>
+                        <span className="text-[8px] text-slate-500">Alternatif: {SUPPORT_EMAIL_ALT}</span>
+                      </div>
                     </div>
                   )}
                   {!error.includes('sudah terdaftar sebagai') && error.length > 0 && (
-                    <Link to="/bantuan" className="mt-1 text-[10px] text-slate-400 hover:text-[#B4B4C8] transition-colors underline decoration-slate-600">
-                      Ada kendala? Hubungi Admin
-                    </Link>
+                    <div className="mt-2 flex flex-col items-center gap-1">
+                      <p className="text-[10px] text-slate-500 font-medium">Bantuan Teknis {PROJECT_NAME}:</p>
+                      <a href={`mailto:${SUPPORT_EMAIL}`} className="text-[10px] text-red-400 hover:text-red-300 transition-colors underline underline-offset-2">
+                        Email Support Kampus: {SUPPORT_EMAIL}
+                      </a>
+                      <span className="text-[8px] text-slate-500">Fallback: {SUPPORT_EMAIL_ALT}</span>
+                    </div>
                   )}
                 </motion.div>
               )}
@@ -622,9 +662,9 @@ export default function Login() {
                       transition={{ duration: 0.3 }}
                       className="space-y-1.5"
                     >
-                      <label htmlFor="nim" className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-[#B4B4C8]">{getIdentifierLabel()}</label>
+                      <label htmlFor="nim" className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">{getIdentifierLabel()}</label>
                       <div className="relative group">
-                        <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 group-focus-within:text-brand-700 dark:text-brand-dark-accent transition-colors" aria-hidden="true" />
+                        <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500 group-focus-within:text-brand-600 dark:text-brand-dark-accent transition-colors" aria-hidden="true" />
                         <input 
                           id="nim"
                           type="text"
@@ -633,8 +673,8 @@ export default function Login() {
                           value={nim}
                           onChange={handleIdentifierChange}
                           className={cn(
-                            "w-full pl-10 pr-4 py-3 bg-slate-50 dark:bg-[#2D2D44] border rounded-lg focus:outline-none focus:ring-1 transition-all text-slate-900 dark:text-[#F5F5F5] placeholder:text-slate-400",
-                            validationError ? "border-red-500/50 focus:border-red-500 focus:ring-red-500" : "border-transparent dark:border-[#3F3F5A]/30 focus:border-brand-400 dark:border-brand-dark-accent focus:ring-brand-dark-accent-light"
+                            "w-full pl-10 pr-4 py-3.5 bg-slate-50 dark:bg-[#1E1E2F] border rounded-xl focus:outline-none focus:ring-2 transition-all text-slate-900 dark:text-[#F5F5F5] placeholder:text-slate-400/70",
+                            validationError ? "border-red-500/50 focus:border-red-500 focus:ring-red-500" : "border-slate-200 dark:border-[#3F3F5A]/30 focus:border-brand-500 dark:border-brand-dark-accent focus:ring-brand-500/50"
                           )}
                           placeholder={getIdentifierPlaceholder()}
                           aria-label={getIdentifierLabel()}
@@ -660,7 +700,7 @@ export default function Login() {
                       className="space-y-1.5 overflow-hidden"
                     >
                       <div className="flex justify-between items-center">
-                        <label htmlFor="password" className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-[#B4B4C8]">Kata Sandi</label>
+                        <label htmlFor="password" className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">Kata Sandi</label>
                         {!isRegistering && (
                           <button 
                             type="button" 
@@ -669,28 +709,28 @@ export default function Login() {
                               setResetStep('EMAIL');
                               setError('');
                             }} 
-                            className="text-xs font-semibold text-blue-600 dark:text-[#86d2ff] hover:underline focus:outline-none focus:ring-2 focus:ring-[#86d2ff] rounded"
+                            className="text-xs font-bold text-blue-600 dark:text-[#86d2ff] hover:underline hover:scale-105 active:scale-95 transition-all focus:outline-none focus:ring-2 focus:ring-[#86d2ff]/50 rounded px-1.5 py-0.5"
                           >
                             Lupa sandi?
                           </button>
                         )}
                       </div>
                       <div className="relative group">
-                        <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 group-focus-within:text-brand-700 dark:text-brand-dark-accent transition-colors" aria-hidden="true" />
+                        <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500 group-focus-within:text-brand-600 dark:text-brand-dark-accent transition-colors" aria-hidden="true" />
                         <input 
                           id="password"
                           type={showPassword ? 'text' : 'password'}
                           required={!isForgotPassword}
                           value={password}
                           onChange={(e) => setPassword(e.target.value)}
-                          className="w-full pl-10 pr-10 py-3 bg-slate-50 dark:bg-[#2D2D44] border border-transparent dark:border-[#3F3F5A]/30 rounded-lg focus:outline-none focus:border-brand-400 dark:border-brand-dark-accent focus:ring-1 focus:ring-brand-dark-accent-light text-slate-900 dark:text-[#F5F5F5] placeholder:text-slate-400 transition-all"
+                          className="w-full pl-10 pr-10 py-3.5 bg-slate-50 dark:bg-[#1E1E2F] border border-slate-200 dark:border-[#3F3F5A]/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500/50 focus:border-brand-500 dark:border-brand-dark-accent text-slate-900 dark:text-[#F5F5F5] placeholder:text-slate-400/70 transition-all"
                           placeholder="••••••••"
                           aria-label="Kata Sandi"
                         />
                         <button 
                           type="button"
                           onClick={() => setShowPassword(!showPassword)}
-                          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-brand-700 dark:text-brand-dark-accent transition-colors focus:outline-none focus:text-brand-700 dark:text-brand-dark-accent"
+                          className="absolute right-3 top-1/2 -translate-y-1/2 p-2 min-w-[32px] min-h-[32px] flex items-center justify-center text-slate-400 hover:text-brand-700 dark:hover:text-brand-dark-accent transition-colors focus:outline-none focus:text-brand-700 active:scale-90"
                           aria-label={showPassword ? "Sembunyikan kata sandi" : "Tampilkan kata sandi"}
                         >
                           {showPassword ? <EyeOff className="w-5 h-5" aria-hidden="true" /> : <Eye className="w-5 h-5" aria-hidden="true" />}
@@ -757,10 +797,23 @@ export default function Login() {
                     <GoogleButton 
                       onClick={handleGoogleLogin}
                       loading={googleLoading}
+                      loadingLabel={loginStep}
                       mode={isRegistering ? 'register' : 'login'}
                       disabled={loading}
                       label={isRegistering ? 'Daftar dengan Google' : 'Masuk dengan Google'}
                     />
+
+                    {showRedirectOption && (
+                      <motion.button
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        type="button"
+                        onClick={() => loginWithRedirect(role)}
+                        className="w-full py-2.5 text-xs font-bold text-slate-500 hover:text-brand-600 dark:text-[#B4B4C8] dark:hover:text-brand-dark-accent border border-dashed border-slate-300 dark:border-[#3F3F5A]/50 rounded-lg transition-all hover:scale-[1.02] active:scale-95 hover:bg-slate-50 dark:hover:bg-[#32324A]/30"
+                      >
+                        Gunakan Metode Redirect (Lebih Lambat tapi Stabil)
+                      </motion.button>
+                    )}
                   </div>
                 </motion.div>
               )}
@@ -780,7 +833,7 @@ export default function Login() {
                 className="w-full py-3.5 bg-brand-dark-accent-light hover:bg-brand-dark-accent-hover hover:scale-[1.02] hover:shadow-[0_0_15px_rgba(209,166,255,0.4)] active:scale-[0.98] text-brand-dark-on-accent font-bold rounded-lg shadow-lg shadow-brand-dark-accent-light/20 transition-all flex items-center justify-center gap-2 group disabled:opacity-50 disabled:hover:scale-100 disabled:hover:shadow-none focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-dark-accent-light focus:ring-offset-[#20082b]"
               >
                 {loading ? (
-                  <><Loader2 className="w-5 h-5 animate-spin" /> Memproses...</>
+                  <><Loader2 className="w-5 h-5 animate-spin" /> {loginStep || 'Memproses...'}</>
                 ) : (
                   <>
                     {isForgotPassword ? (
@@ -819,7 +872,7 @@ export default function Login() {
                       setResetStep('EMAIL');
                       setError('');
                     }} 
-                    className="text-brand-700 dark:text-brand-dark-accent font-bold hover:text-pink-600 dark:text-[#ffafd5] transition-colors underline decoration-2 underline-offset-4 decoration-brand-dark-accent-light/30"
+                    className="text-brand-700 dark:text-brand-dark-accent font-bold hover:text-pink-600 dark:text-[#ffafd5] transition-all hover:scale-105 active:scale-95 underline decoration-2 underline-offset-4 decoration-brand-dark-accent-light/30 inline-block"
                   >
                     Masuk
                   </button>
@@ -832,7 +885,7 @@ export default function Login() {
                       setIsRegistering(!isRegistering);
                       setError('');
                     }} 
-                    className="text-brand-700 dark:text-brand-dark-accent font-bold hover:text-pink-600 dark:text-[#ffafd5] transition-colors underline decoration-2 underline-offset-4 decoration-brand-dark-accent-light/30"
+                    className="text-brand-700 dark:text-brand-dark-accent font-bold hover:text-pink-600 dark:text-[#ffafd5] transition-all hover:scale-105 active:scale-95 underline decoration-2 underline-offset-4 decoration-brand-dark-accent-light/30 inline-block"
                   >
                     {isRegistering ? 'Masuk' : 'Daftar'}
                   </button>
