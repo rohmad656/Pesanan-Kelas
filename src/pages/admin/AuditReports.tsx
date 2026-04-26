@@ -148,7 +148,7 @@ export default function AuditReports() {
                   <option value="all">Semua Prioritas</option>
                   <option value="high">🚨 Darurat</option>
                   <option value="medium">⚠️ Penting</option>
-                  <option value="low">✅ Normal</option>
+                  <option value="low">🟢 Ringan</option>
                 </select>
               </div>
               <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">{issues.length} Laporan</span>
@@ -186,7 +186,7 @@ export default function AuditReports() {
                                 issue.severity === 'medium' ? 'bg-yellow-500 text-white shadow-lg shadow-yellow-500/20' : 
                                 'bg-green-500 text-white'
                               }`}>
-                                {issue.severity === 'high' ? '🚨 Darurat' : issue.severity === 'medium' ? '⚠️ Penting' : '✅ Normal'}
+                                {issue.severity === 'high' ? '🚨 Darurat' : issue.severity === 'medium' ? '⚠️ Penting' : '🟢 Ringan'}
                               </span>
                             )}
                             {issue.status === 'resolved' && (

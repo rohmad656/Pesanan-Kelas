@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { HelpCircle, BookOpen, MessageCircle, Phone, Mail, User, AlertTriangle, Loader2, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
-import { collection, query, where, getDocs } from 'firebase/firestore';
+import { collection, query, where, getDocs, onSnapshot } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../lib/firebase';
 import ReportIssueModal from '../../components/ReportIssueModal';
 import { SUPPORT_EMAIL, SUPPORT_EMAIL_ALT, PROJECT_NAME } from '../../constants';
@@ -49,26 +49,26 @@ export default function Help() {
   ];
 
   useEffect(() => {
-    async function fetchAdminContacts() {
-      try {
-        const q = query(
-          collection(db, 'admin_contacts'), 
-          where('isActive', '==', true)
-        );
-        const snapshot = await getDocs(q);
-        const contacts = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        }));
-        setAdminContacts(contacts);
-      } catch (error) {
-        handleFirestoreError(error, OperationType.GET, 'admin_contacts');
-      } finally {
-        setLoadingStaff(false);
-      }
-    }
+    // Use onSnapshot for real-time updates of active contacts
+    const q = query(
+      collection(db, 'admin_contacts'), 
+      where('isActive', '==', true)
+    );
+    
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const contacts = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setAdminContacts(contacts);
+      setLoadingStaff(false);
+    }, (error) => {
+      console.error("Help contacts error:", error);
+      handleFirestoreError(error, OperationType.GET, 'admin_contacts');
+      setLoadingStaff(false);
+    });
 
-    fetchAdminContacts();
+    return () => unsubscribe();
   }, []);
 
   return (

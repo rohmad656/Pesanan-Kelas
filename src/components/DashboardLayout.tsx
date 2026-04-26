@@ -45,15 +45,16 @@ export default function DashboardLayout() {
   const toastHistory = React.useRef<Set<string>>(new Set());
   const initialRole = React.useRef<string | null>(localStorage.getItem('user_role_last_session'));
 
-  // Fetch Admin Contacts globally
+  // Fetch Admin Contacts globally - Make it robust and real-time
   useEffect(() => {
-    if (!profile) return;
+    // We can fetch this regardless of profile for early availability since rules are public
     const q = query(collection(db, 'admin_contacts'), where('isActive', '==', true));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      setAdminContacts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      const contacts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setAdminContacts(contacts);
     }, (error) => console.error("Admin contacts fetch error:", error));
     return () => unsubscribe();
-  }, [profile?.uid]);
+  }, []);
 
   // PERSISTENT ROLE TRACKING: Sync role and persist it for session detection
   useEffect(() => {

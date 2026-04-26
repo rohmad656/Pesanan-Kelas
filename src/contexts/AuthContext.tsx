@@ -50,6 +50,7 @@ interface AuthContextType {
   completeOTPReset: (email: string, otp: string, password: string) => Promise<{ success: boolean; message: string }>;
   logout: () => Promise<void>;
   loginWithRedirect: (intendedRole?: Role) => Promise<void>;
+  linkGoogle: () => Promise<FirebaseUser | undefined>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -89,7 +90,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         
         // Listen to profile changes in real-time
         const docRef = doc(db, 'users', currentUser.uid);
-        unsubscribeProfile = onSnapshot(docRef, (docSnap) => {
+        unsubscribeProfile = onSnapshot(docRef, async (docSnap) => {
           if (docSnap.exists()) {
             const data = docSnap.data() as UserProfile & { deleted?: boolean };
             if (data.deleted) {
@@ -100,6 +101,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               localStorage.removeItem('user_profile');
               toast.error('Akun Anda telah dihapus oleh administrator.');
             } else {
+              // --- PENDING EMAIL SYNC AUTO-CHECK ---
+              // If there's a pending email, reload auth periodically to catch its verification
+              if (data.pendingEmail && currentUser.email !== data.pendingEmail) {
+                // Only reload if we haven't reloaded in the last 30 seconds to avoid spamming Auth
+                const lastReload = parseInt(localStorage.getItem('last_auth_reload') || '0');
+                if (Date.now() - lastReload > 30000) {
+                   currentUser.reload().then(() => {
+                     localStorage.setItem('last_auth_reload', Date.now().toString());
+                     console.log("[AUTH] Reloaded user to check verification status");
+                   }).catch(e => console.warn("Background auth reload failed:", e));
+                }
+              }
+
               // --- DETECT ROLE CHANGE & REFRESH TOKEN ---
               const oldProfileRaw = localStorage.getItem('user_profile');
               if (oldProfileRaw) {
@@ -564,9 +578,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       let userData: UserProfile;
 
       if (!docSnap.exists()) {
+        const email = currentUser.email || '';
+        
+        // --- PREVENT DUPLICATE PROFILES VIA EMAIL COLLISION ---
+        // Check if an existing profile uses this email under a DIFFERENT UID
+        // (e.g., a NIM user who updated email but hasn't linked Google yet)
+        const qEmail = query(collection(db, 'users'), where('email', '==', email));
+        const emailSnap = await getDocs(qEmail);
+        
+        if (!emailSnap.empty) {
+          console.warn("[AUTH] Profile with this email exists under different UID. Redirecting to link flow.");
+          await signOut(auth);
+          const error: any = new Error(`Email ${email} sudah terdaftar melalui NIM. Silakan login menggunakan NIM/Sandi, lalu buka halaman Profil untuk menghubungkan Akun Google agar bisa login dengan Google lain kali.`);
+          error.code = 'auth/email-already-in-use-firestore';
+          throw error;
+        }
+
         isNewUser = true;
         // 1. Automatic Record Creation for New Users
-        const email = currentUser.email || '';
         
         // Initial role selection logic (Default to mahasiswa, detect dosen/admin via domain)
         let finalRole: Role = 'mahasiswa';
@@ -760,6 +789,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await signInWithRedirect(auth, googleProvider);
   };
 
+  const linkGoogle = async () => {
+    if (!auth.currentUser) return;
+    try {
+      const { linkWithPopup } = await import('firebase/auth');
+      const result = await linkWithPopup(auth.currentUser, googleProvider);
+      toast.success('Akun Google berhasil dihubungkan!');
+      return result.user;
+    } catch (error: any) {
+      if (error.code === 'auth/credential-already-in-use') {
+        throw new Error('Akun Google ini sudah terhubung dengan profil lain.');
+      }
+      throw error;
+    }
+  };
+
   return (
     <AuthContext.Provider value={{ 
       user, 
@@ -780,7 +824,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       verifyOTPReset,
       completeOTPReset,
       logout,
-      loginWithRedirect
+      loginWithRedirect,
+      linkGoogle
     }}>
       {children}
     </AuthContext.Provider>

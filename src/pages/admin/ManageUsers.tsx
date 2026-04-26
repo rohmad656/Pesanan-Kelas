@@ -10,7 +10,8 @@ import {
   updateDoc, 
   doc, 
   deleteDoc, 
-  where 
+  where,
+  onSnapshot
 } from 'firebase/firestore';
 import { Filter, Trash2, Users, Search, ChevronLeft, ChevronRight, AlertTriangle, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -63,19 +64,23 @@ export default function ManageUsers() {
     }
   };
 
-  const fetchContacts = async () => {
-    try {
-      const q = query(collection(db, 'admin_contacts'), orderBy('updatedAt', 'desc'));
-      const snap = await getDocs(q);
-      setContacts(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    } catch (error) {
-      console.error("Fetch contacts error:", error);
-    }
-  };
-
+  // Use real-time listener for contacts to avoid sync issues
   useEffect(() => {
     fetchUsers();
-    fetchContacts();
+    const q = collection(db, 'admin_contacts');
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const contactsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      // Sort in JS to avoid Firestore query exclusion on missing fields
+      contactsData.sort((a: any, b: any) => {
+        const timeA = a.updatedAt?.toMillis?.() || 0;
+        const timeB = b.updatedAt?.toMillis?.() || 0;
+        return timeB - timeA;
+      });
+      setContacts(contactsData);
+    }, (error) => {
+      console.error("Fetch contacts error:", error);
+    });
+    return () => unsubscribe();
   }, []);
 
   const handleAddContact = async (e: React.FormEvent) => {
@@ -90,7 +95,6 @@ export default function ManageUsers() {
       });
       toast.success('Kontak admin berhasil ditambahkan');
       setNewContact({ name: '', whatsapp: '' });
-      fetchContacts();
     } catch (error) {
       toast.error('Gagal menambahkan kontak');
     } finally {
@@ -104,7 +108,6 @@ export default function ManageUsers() {
         isActive: !contact.isActive,
         updatedAt: serverTimestamp()
       });
-      fetchContacts();
     } catch (error) {
       toast.error('Gagal memperbarui status');
     }
@@ -114,7 +117,6 @@ export default function ManageUsers() {
     if (!confirm('Hapus kontak ini?')) return;
     try {
       await deleteDoc(doc(db, 'admin_contacts', id));
-      setContacts(prev => prev.filter(c => c.id !== id));
       toast.success('Kontak dihapus');
     } catch (error) {
       toast.error('Gagal menghapus');

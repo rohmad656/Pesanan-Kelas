@@ -32,7 +32,7 @@ import RoleChangeModal from '../../components/RoleChangeModal';
 import { cn } from '../../lib/utils';
 
 export default function Profile() {
-  const { profile, user, updateUserProfile, resendVerification } = useAuth();
+  const { profile, user, updateUserProfile, resendVerification, linkGoogle } = useAuth();
   const [isSaving, setIsSaving] = useState(false);
   const [isResending, setIsResending] = useState(false);
   const [name, setName] = useState(profile?.name || '');
@@ -186,12 +186,12 @@ export default function Profile() {
       if (profile?.role === 'admin' || profile?.role === 'staff') {
         if (whatsappNumber && !whatsappError) {
           try {
-            await setDoc(doc(db, 'admin_contacts', profile.id), {
+            await setDoc(doc(db, 'admin_contacts', profile.uid), {
               name: name,
               whatsapp: whatsappNumber,
               isActive: true,
               updatedAt: serverTimestamp(),
-              staffId: profile.id
+              staffId: profile.uid
             }, { merge: true });
           } catch (syncError) {
             console.error("Auto-sync to admin_contacts failed:", syncError);
@@ -235,6 +235,28 @@ export default function Profile() {
   };
 
   const isCampusEmail = profile?.email?.endsWith('@campus.ac.id');
+  const isGoogleLinked = user?.providerData.some(p => p.providerId === 'google.com');
+
+  const handleLinkGoogle = async () => {
+    try {
+      await linkGoogle();
+    } catch (error: any) {
+      toast.error(error.message || 'Gagal menghubungkan akun Google.');
+    }
+  };
+
+  const handleCheckVerification = async () => {
+    if (!user) return;
+    setIsResending(true);
+    try {
+      await user.reload();
+      toast.success('Status verifikasi diperbarui. Jika Anda sudah klik link di email, profil akan segera tersinkronisasi.');
+    } catch (e: any) {
+      toast.error('Gagal memperbarui status verifikasi.');
+    } finally {
+      setIsResending(false);
+    }
+  };
 
   const handleCancelEmailChange = async () => {
     if (!profile) return;
@@ -328,23 +350,32 @@ export default function Profile() {
                   *Email harus terverifikasi untuk dapat melakukan pemesanan ruangan dan laporan.
                 </p>
               )}
-              {profile?.pendingEmail && (
-                <div className="mt-3 p-2 bg-blue-500/10 border border-blue-500/20 rounded-lg">
-                  <p className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase mb-1 flex items-center justify-between">
-                    <span>Menunggu Verifikasi</span>
-                    <button 
-                      onClick={handleCancelEmailChange}
-                      className="text-[9px] text-red-500 hover:underline"
-                    >
-                      Batal
-                    </button>
-                  </p>
-                  <p className="text-[11px] font-bold text-slate-700 dark:text-[#F5F5F5] truncate">{profile.pendingEmail}</p>
-                  <p className="text-[9px] text-slate-500 mt-1 italic leading-tight">
-                    Link verifikasi telah dikirim ke alamat di atas. Klik link tersebut untuk mengganti email akun Anda.
-                  </p>
-                </div>
-              )}
+                  {profile?.pendingEmail && (
+                    <div className="mt-3 p-2 bg-blue-500/10 border border-blue-500/20 rounded-lg">
+                      <p className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase mb-1 flex items-center justify-between">
+                        <span>Menunggu Verifikasi</span>
+                        <div className="flex gap-2">
+                          <button 
+                            onClick={handleCheckVerification}
+                            disabled={isResending}
+                            className="text-[9px] text-blue-600 hover:underline decoration-dotted"
+                          >
+                            {isResending ? 'Cek...' : 'Cek Status'}
+                          </button>
+                          <button 
+                            onClick={handleCancelEmailChange}
+                            className="text-[9px] text-red-500 hover:underline"
+                          >
+                            Batal
+                          </button>
+                        </div>
+                      </p>
+                      <p className="text-[11px] font-bold text-slate-700 dark:text-[#F5F5F5] truncate">{profile.pendingEmail}</p>
+                      <p className="text-[9px] text-slate-500 mt-1 italic leading-tight">
+                        Link verifikasi telah dikirim ke alamat di atas. Klik link tersebut untuk mengganti email akun Anda.
+                      </p>
+                    </div>
+                  )}
             </div>
             <div className="p-3 bg-slate-50 dark:bg-[#32324A] rounded-xl border border-slate-100 dark:border-[#3F3F5A]/30">
               <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Status {getIdentifierLabel()}</p>
@@ -492,6 +523,25 @@ export default function Profile() {
               </h3>
               <div className="space-y-5">
                 <div className="space-y-4">
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <p className="text-sm font-bold text-slate-700 dark:text-[#F5F5F5]">Akun Google Terhubung</p>
+                      <p className="text-[10px] text-slate-500">Memungkinkan Anda login menggunakan akun Google Anda.</p>
+                    </div>
+                    {isGoogleLinked ? (
+                      <div className="flex items-center gap-2 px-3 py-1.5 bg-green-500/10 text-green-500 rounded-lg border border-green-500/20 text-[10px] font-extrabold uppercase">
+                        <CheckCircle2 className="w-3 h-3" /> Terhubung
+                      </div>
+                    ) : (
+                      <button 
+                        onClick={handleLinkGoogle}
+                        className="flex items-center gap-2 px-3 py-1.5 bg-brand-600 hover:bg-brand-700 text-white rounded-lg shadow-sm text-[10px] font-bold transition-all active:scale-95"
+                      >
+                        Hubungkan Google
+                      </button>
+                    )}
+                  </div>
+                  
                   <div className="flex justify-between items-center">
                     <p className="text-sm font-bold text-slate-700 dark:text-[#F5F5F5]">Kanal Notifikasi</p>
                     <span className={cn(

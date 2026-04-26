@@ -277,7 +277,7 @@ service cloud.firestore {
     }
 
     match /users/{userId} {
-      allow read: if isOwner(userId) || isStaff() || (isAuthenticated() && resource.data.get('role', 'user') in ['staff', 'admin']);
+      allow read: if isOwner(userId) || isStaff() || (isAuthenticated() && resource != null && resource.data.get('role', 'user') in ['staff', 'admin']);
       allow list: if isStaff();
       allow create: if isAuthenticated() && isOwner(userId) && isValidUser(request.resource.data) &&
                     request.resource.data.uid == request.auth.uid &&
@@ -335,7 +335,8 @@ service cloud.firestore {
       allow read: if isAuthenticated() && (
         (resource.data.userId == request.auth.uid) || 
         (resource.data.targetRole == 'admin' && isStaff()) ||
-        (resource.data.targetRole == 'staff' && isStaff())
+        (resource.data.targetRole == 'staff' && isStaff()) ||
+        (resource.data.targetRole != null && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && resource.data.targetRole == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role)
       );
       allow create: if isAuthenticated() && (
                     (isValidNotification(request.resource.data) && (isStaff() || ('userId' in request.resource.data && request.resource.data.userId == request.auth.uid) || ('targetRole' in request.resource.data && request.resource.data.targetRole == 'admin')))

@@ -78,7 +78,7 @@ export default function ReportIssueModal({ isOpen, onClose, initialRoomId, initi
     try {
       // Create issue report
       const severityLabels: Record<string, string> = {
-        low: 'Rendah',
+        low: 'Ringan',
         medium: 'Penting',
         high: 'Darurat'
       };
@@ -98,7 +98,7 @@ export default function ReportIssueModal({ isOpen, onClose, initialRoomId, initi
 
       // Create notification for admin/staff
       try {
-        const severityIcon = formData.severity === 'high' ? '🚨' : formData.severity === 'medium' ? '⚠️' : '🔔';
+        const severityIcon = formData.severity === 'high' ? '🚨' : formData.severity === 'medium' ? '⚠️' : '🟢';
         await addDoc(collection(db, 'notifications'), {
           targetRole: 'admin',
           title: `${severityIcon} Laporan ${severityLabels[formData.severity]} Baru`,
@@ -202,7 +202,7 @@ export default function ReportIssueModal({ isOpen, onClose, initialRoomId, initi
               </label>
               <div className="grid grid-cols-3 gap-3">
                 {[
-                  { id: 'low', label: 'Rendah', color: 'bg-green-500', shadow: 'shadow-green-500/20' },
+                  { id: 'low', label: 'Ringan', color: 'bg-green-500', shadow: 'shadow-green-500/20' },
                   { id: 'medium', label: 'Penting', color: 'bg-yellow-500', shadow: 'shadow-yellow-500/20' },
                   { id: 'high', label: 'Darurat', color: 'bg-red-600', shadow: 'shadow-red-600/20' }
                 ].map((level) => (
@@ -217,7 +217,7 @@ export default function ReportIssueModal({ isOpen, onClose, initialRoomId, initi
                     }`}
                   >
                     <div className="flex flex-col items-center gap-1">
-                      <span>{level.id === 'high' ? '🚨' : level.id === 'medium' ? '⚠️' : '✅'}</span>
+                      <span>{level.id === 'high' ? '🚨' : level.id === 'medium' ? '⚠️' : '🟢'}</span>
                       <span>{level.label}</span>
                     </div>
                   </button>

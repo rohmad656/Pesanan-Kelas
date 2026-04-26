@@ -83,7 +83,7 @@ export default function Reports() {
                     : "text-slate-500 dark:text-[#B4B4C8] hover:bg-slate-100 dark:hover:bg-[#32324A]"
                 }`}
               >
-                {s === 'all' ? 'Semua' : s === 'high' ? 'Darurat' : s === 'medium' ? 'Penting' : 'Normal'}
+                {s === 'all' ? 'Semua' : s === 'high' ? 'Darurat' : s === 'medium' ? 'Penting' : 'Ringan'}
               </button>
             ))}
           </div>
@@ -130,7 +130,7 @@ export default function Reports() {
                           issue.severity === 'medium' ? 'bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 border border-yellow-500/20' :
                           'bg-green-500/10 text-green-500 border border-green-500/20'
                         }`}>
-                          {issue.severity === 'high' ? '🚨 Darurat' : issue.severity === 'medium' ? '⚠️ Penting' : '✅ Normal'}
+                          {issue.severity === 'high' ? '🚨 Darurat' : issue.severity === 'medium' ? '⚠️ Penting' : '🟢 Ringan'}
                         </span>
                       )}
                     </h3>
