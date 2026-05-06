@@ -258,7 +258,11 @@ async function startServer() {
     }
 
     try {
-      const db = getDb();
+      const db = getFirestore(
+        admin.app(),
+        "ai-studio-45b49c1d-a273-439d-b236-ff9b61b55d70",
+      );
+
       // Verify admin token
       const decodedToken = await admin.auth().verifyIdToken(adminToken);
 
@@ -345,7 +349,10 @@ async function startServer() {
 
     try {
       const decodedToken = await admin.auth().verifyIdToken(adminToken);
-      const db = getDb();
+      const db = getFirestore(
+        admin.app(),
+        "ai-studio-45b49c1d-a273-439d-b236-ff9b61b55d70",
+      );
 
       // Verify requester is admin/staff
       const requesterDoc = await db
@@ -415,7 +422,10 @@ async function startServer() {
 
     try {
       const decodedToken = await admin.auth().verifyIdToken(adminToken);
-      const db = getDb();
+      const db = getFirestore(
+        admin.app(),
+        "ai-studio-45b49c1d-a273-439d-b236-ff9b61b55d70",
+      );
 
       // 1. Verify requester is admin
       const requesterDoc = await db
@@ -525,7 +535,10 @@ async function startServer() {
 
     try {
       const decodedToken = await admin.auth().verifyIdToken(adminToken);
-      const db = getDb();
+      const db = getFirestore(
+        admin.app(),
+        "ai-studio-45b49c1d-a273-439d-b236-ff9b61b55d70",
+      );
 
       // Verify requester is admin
       const requesterDoc = await db
@@ -575,7 +588,10 @@ async function startServer() {
     }
 
     try {
-      const db = getDb();
+      const db = getFirestore(
+        admin.app(),
+        "ai-studio-45b49c1d-a273-439d-b236-ff9b61b55d70",
+      );
       let qBuilder = db.collection("users").where("nim", "==", nim);
       const q = await qBuilder.get();
 
@@ -620,7 +636,10 @@ async function startServer() {
     }
 
     try {
-      const db = getDb();
+      const db = getFirestore(
+        admin.app(),
+        "ai-studio-45b49c1d-a273-439d-b236-ff9b61b55d70",
+      );
       // Look for ANY document with this email
       const q = await db.collection("users").where("email", "==", email).get();
 
@@ -674,7 +693,10 @@ async function startServer() {
     }
 
     try {
-      const db = getDb();
+      const db = getFirestore(
+        admin.app(),
+        "ai-studio-45b49c1d-a273-439d-b236-ff9b61b55d70",
+      );
       const q = await db
         .collection("users")
         .where("nim", "==", nim)
@@ -732,7 +754,10 @@ async function startServer() {
       });
 
       // 3. Audit Activity (Firestore Role)
-      const db = getDb();
+      const db = getFirestore(
+        admin.app(),
+        "ai-studio-45b49c1d-a273-439d-b236-ff9b61b55d70",
+      );
       await db.collection("audit_logs").add({
         action: "PASSWORD_RESET_REQUESTED",
         targetEmail: email,
@@ -761,7 +786,10 @@ async function startServer() {
       return res.status(400).json({ error: "Email atau NIM diperlukan" });
 
     try {
-      const db = getDb();
+      const db = getFirestore(
+        admin.app(),
+        "ai-studio-45b49c1d-a273-439d-b236-ff9b61b55d70",
+      );
 
       // Auto-lookup email if NIM/NIP is provided instead of email
       if (!email.includes("@")) {
@@ -898,7 +926,10 @@ async function startServer() {
       return res.status(400).json({ error: "Email and OTP are required" });
 
     try {
-      const db = getDb();
+      const db = getFirestore(
+        admin.app(),
+        "ai-studio-45b49c1d-a273-439d-b236-ff9b61b55d70",
+      );
 
       // Support NIM lookup in verify too
       if (!email.includes("@")) {
@@ -978,7 +1009,10 @@ async function startServer() {
         .json({ error: "Email, OTP, and newPassword are required" });
 
     try {
-      const db = getDb();
+      const db = getFirestore(
+        admin.app(),
+        "ai-studio-45b49c1d-a273-439d-b236-ff9b61b55d70",
+      );
 
       // Support NIM lookup in complete too
       if (!email.includes("@")) {
@@ -1083,7 +1117,10 @@ async function startServer() {
 
     // Also add to audit logs if possible
     try {
-      const db = getDb();
+      const db = getFirestore(
+        admin.app(),
+        "ai-studio-45b49c1d-a273-439d-b236-ff9b61b55d70",
+      );
       await db.collection("audit_logs").add({
         action: "PASSWORD_CHANGED",
         targetEmail: email,
@@ -1099,7 +1136,10 @@ async function startServer() {
 
   // Reminder Service
   const startReminderService = () => {
-    const db = getDb();
+    const db = getFirestore(
+      admin.app(),
+      "ai-studio-45b49c1d-a273-439d-b236-ff9b61b55d70",
+    );
     console.log(
       `Reminder service started (Database: ${firestoreDatabaseId || "(default)"})...`,
     );
