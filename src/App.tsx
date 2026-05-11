@@ -105,25 +105,25 @@ export default function App() {
 
   return (
     <ThemeProvider>
-      <AuthProvider>
-        <DataProvider>
-          <Toaster
-            position="top-center"
-            toastOptions={{
-              style: {
-                background: "#3b134b",
-                color: "#f9dcff",
-                border: "1px solid rgba(96, 55, 112, 0.5)",
-              },
-              success: {
-                iconTheme: {
-                  primary: "#d1a6ff",
-                  secondary: "#3a0a67",
+      <Router>
+        <AuthProvider>
+          <DataProvider>
+            <Toaster
+              position="top-center"
+              toastOptions={{
+                style: {
+                  background: "#3b134b",
+                  color: "#f9dcff",
+                  border: "1px solid rgba(96, 55, 112, 0.5)",
                 },
-              },
-            }}
-          />
-          <Router>
+                success: {
+                  iconTheme: {
+                    primary: "#d1a6ff",
+                    secondary: "#3a0a67",
+                  },
+                },
+              }}
+            />
             <Routes>
               <Route path="/" element={<Landing />} />
               <Route path="/login" element={<Login />} />
@@ -179,9 +179,9 @@ export default function App() {
                 />
               </Route>
             </Routes>
-          </Router>
-        </DataProvider>
-      </AuthProvider>
+          </DataProvider>
+        </AuthProvider>
+      </Router>
     </ThemeProvider>
   );
 }
