@@ -1,30 +1,38 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useAuth, Role } from '../contexts/AuthContext';
-import { useTheme } from '../contexts/ThemeContext';
-import { User, Mail, Phone, ShieldCheck, Loader2, ArrowRight, Contact } from 'lucide-react';
-import { cn } from '../lib/utils';
-import toast from 'react-hot-toast';
-import { motion } from 'motion/react';
-import { PROJECT_NAME } from '../constants';
+import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import { useAuth, Role } from "../contexts/AuthContext";
+import { useTheme } from "../contexts/ThemeContext";
+import {
+  User,
+  Mail,
+  Phone,
+  ShieldCheck,
+  Loader2,
+  ArrowRight,
+  Contact,
+} from "lucide-react";
+import { cn } from "../lib/utils";
+import toast from "react-hot-toast";
+import { motion } from "motion/react";
+import { PROJECT_NAME } from "../constants";
 
 export default function Register() {
   const { pendingRegistration, completeRegistration, logout } = useAuth();
   const { setTheme } = useTheme();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
-  const [role, setRole] = useState<Role>('mahasiswa');
-  const [name, setName] = useState('');
-  const [identifier, setIdentifier] = useState('');
-  const [identifierError, setIdentifierError] = useState('');
+  const [role, setRole] = useState<Role>("mahasiswa");
+  const [name, setName] = useState("");
+  const [identifier, setIdentifier] = useState("");
+  const [identifierError, setIdentifierError] = useState("");
   const [isCheckingIdentifier, setIsCheckingIdentifier] = useState(false);
-  const [whatsappNumber, setWhatsappNumber] = useState('');
-  const [whatsappError, setWhatsappError] = useState('');
+  const [whatsappNumber, setWhatsappNumber] = useState("");
+  const [whatsappError, setWhatsappError] = useState("");
 
   useEffect(() => {
-    setTheme('dark');
+    setTheme("dark");
     if (!pendingRegistration) {
-      navigate('/login');
+      navigate("/login");
     } else {
       setName(pendingRegistration.name);
       if (pendingRegistration.role) {
@@ -37,50 +45,60 @@ export default function Register() {
   const handleWhatsappChange = (value: string) => {
     let formatted = value;
     // Auto-format: 08... -> +628...
-    if (value.startsWith('08')) {
-      formatted = '+628' + value.substring(2);
-    } 
+    if (value.startsWith("08")) {
+      formatted = "+628" + value.substring(2);
+    }
     // Only allow numbers and + prefix
-    formatted = formatted.replace(/[^\d+]/g, '');
-    
+    formatted = formatted.replace(/[^\d+]/g, "");
+
     setWhatsappNumber(formatted);
 
     // Validation
     if (!formatted) {
-      setWhatsappError('');
-    } else if (!formatted.startsWith('+62')) {
-      setWhatsappError('Gunakan format +62...');
+      setWhatsappError("");
+    } else if (!formatted.startsWith("+62")) {
+      setWhatsappError("Gunakan format +62...");
     } else if (formatted.length < 12 || formatted.length > 15) {
-      setWhatsappError('Panjang nomor tidak valid (10-13 digit setelah +62)');
+      setWhatsappError("Panjang nomor tidak valid (10-13 digit setelah +62)");
     } else {
-      setWhatsappError('');
+      setWhatsappError("");
     }
   };
 
   // Validate Identifier on change
   useEffect(() => {
     if (!identifier) {
-      setIdentifierError('');
+      setIdentifierError("");
       return;
     }
 
     // Format validation
-    if (role === 'mahasiswa') {
+    if (role === "mahasiswa") {
       if (!/^\d+$/.test(identifier)) {
-        setIdentifierError('NIM harus berupa angka saja.');
+        setIdentifierError("NIM harus berupa angka saja.");
         return;
       }
       if (identifier.length !== 12) {
-        setIdentifierError('NIM harus tepat 12 digit.');
+        setIdentifierError("NIM harus tepat 12 digit.");
         return;
       }
-    } else if (role === 'dosen') {
+    } else if (role === "dosen") {
       if (!/^\d+$/.test(identifier)) {
-        setIdentifierError('NIP harus berupa angka saja.');
+        setIdentifierError("NIP harus berupa angka saja.");
         return;
       }
       if (identifier.length !== 18) {
-        setIdentifierError('NIP harus tepat 18 digit.');
+        setIdentifierError("NIP harus tepat 18 digit.");
+        return;
+      }
+    } else if (role === "staff") {
+      // Staff ID: flexible format (alphanumeric, 3-20 characters)
+      if (identifier.length < 3) {
+        setIdentifierError("ID Staf minimal 3 karakter.");
+        return;
+      }
+      if (identifier.length > 20) {
+        setIdentifierError("ID Staf maksimal 20 karakter.");
         return;
       }
     }
@@ -88,16 +106,22 @@ export default function Register() {
     const checkIdentifier = async () => {
       setIsCheckingIdentifier(true);
       try {
-        const { getDocs, collection, query, where } = await import('firebase/firestore');
-        const { db } = await import('../lib/firebase');
-        
-        const q = query(collection(db, 'users'), where('nim', '==', identifier));
+        const { getDocs, collection, query, where } =
+          await import("firebase/firestore");
+        const { db } = await import("../lib/firebase");
+
+        const q = query(
+          collection(db, "users"),
+          where("nim", "==", identifier),
+        );
         const snap = await getDocs(q);
-        
+
         if (!snap.empty) {
-          setIdentifierError(`${getIdentifierLabel()} ini sudah terpakai oleh akun lain.`);
+          setIdentifierError(
+            `${getIdentifierLabel()} ini sudah terpakai oleh akun lain.`,
+          );
         } else {
-          setIdentifierError('');
+          setIdentifierError("");
         }
       } catch (e) {
         console.warn("Failed to check NIM uniqueness:", e);
@@ -111,18 +135,26 @@ export default function Register() {
   }, [identifier, role]);
 
   const getIdentifierLabel = () => {
-    if (role === 'mahasiswa') return 'NIM';
-    if (role === 'dosen') return 'NIP';
-    return 'ID Staf';
+    if (role === "mahasiswa") return "NIM";
+    if (role === "dosen") return "NIP";
+    if (role === "staff") return "ID Staf";
+    return "ID";
   };
 
   const getIdentifierPlaceholder = () => {
-    if (role === 'mahasiswa') return '12 Digit Angka NIM';
-    if (role === 'dosen') return '18 Digit Angka NIP';
-    return 'ID Staf Anda';
+    if (role === "mahasiswa") return "12 Digit Angka NIM";
+    if (role === "dosen") return "18 Digit Angka NIP";
+    if (role === "staff") return "ID Staf Anda (3-20 karakter)";
+    return "ID Anda";
   };
 
-  const isFormValid = identifier && !identifierError && whatsappNumber && !whatsappError && name && !isCheckingIdentifier;
+  const isFormValid =
+    identifier &&
+    !identifierError &&
+    whatsappNumber &&
+    !whatsappError &&
+    name &&
+    !isCheckingIdentifier;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -136,11 +168,11 @@ export default function Register() {
         nim: identifier, // We use nim field to store NIM/NIP/ID
         whatsappNumber,
       });
-      toast.success('Pendaftaran berhasil!');
-      navigate('/dashboard');
+      toast.success("Pendaftaran berhasil!");
+      navigate("/dashboard");
     } catch (err: any) {
       console.error(err);
-      toast.error(err.message || 'Gagal menyelesaikan pendaftaran');
+      toast.error(err.message || "Gagal menyelesaikan pendaftaran");
     } finally {
       setLoading(false);
     }
@@ -156,7 +188,7 @@ export default function Register() {
         <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-[#ffafd5]/20 rounded-full blur-[120px]"></div>
       </div>
 
-      <motion.div 
+      <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         className="bg-white dark:bg-[#27273A] w-full max-w-lg rounded-2xl shadow-2xl border border-slate-200 dark:border-[#3F3F5A]/30 overflow-hidden relative z-10"
@@ -166,19 +198,27 @@ export default function Register() {
             <div className="w-16 h-16 bg-brand-dark-accent-light/20 rounded-full flex items-center justify-center mx-auto mb-4">
               <User className="w-8 h-8 text-brand-dark-accent" />
             </div>
-            <h1 className="text-2xl font-extrabold mb-2 tracking-tight">Lengkapi Profil Anda</h1>
+            <h1 className="text-2xl font-extrabold mb-2 tracking-tight">
+              Lengkapi Profil Anda
+            </h1>
             <p className="text-slate-500 dark:text-[#B4B4C8] text-sm">
-              Satu langkah lagi untuk bergabung dengan <span className="text-brand-dark-accent font-bold">{PROJECT_NAME}</span>.
+              Satu langkah lagi untuk bergabung dengan{" "}
+              <span className="text-brand-dark-accent font-bold">
+                {PROJECT_NAME}
+              </span>
+              .
             </p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-6">
             {/* Email (Read Only) */}
             <div className="space-y-1.5">
-              <label className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">Email</label>
+              <label className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                Email
+              </label>
               <div className="relative group opacity-80">
                 <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500" />
-                <input 
+                <input
                   type="email"
                   disabled
                   value={pendingRegistration.email}
@@ -189,26 +229,34 @@ export default function Register() {
 
             {/* Role Selector */}
             <div className="space-y-1.5">
-              <label className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">Pilih Peran</label>
+              <label className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                Pilih Peran
+              </label>
               <div className="bg-slate-100 dark:bg-[#32324A] p-1.5 rounded-xl flex relative border border-slate-200/50 dark:border-[#3F3F5A]/50">
-                {(['mahasiswa', 'dosen', 'admin'] as Role[]).map((r) => (
+                {(["mahasiswa", "dosen", "staff"] as Role[]).map((r) => (
                   <button
                     key={r}
                     type="button"
                     onClick={() => setRole(r)}
                     className={cn(
                       "flex-1 py-2.5 px-3 min-h-[44px] text-xs font-extrabold rounded-lg transition-all duration-300 capitalize relative z-10",
-                      role === r 
-                        ? "text-white" 
-                        : "text-slate-500 dark:text-[#B4B4C8] hover:text-brand-700 dark:hover:text-white"
+                      role === r
+                        ? "text-white"
+                        : "text-slate-500 dark:text-[#B4B4C8] hover:text-brand-700 dark:hover:text-white",
                     )}
                   >
-                    <span className="relative z-10">{r === 'admin' ? 'Staf' : r}</span>
+                    <span className="relative z-10">
+                      {r === "staff" ? "Staf" : r}
+                    </span>
                     {role === r && (
                       <motion.div
                         layoutId="activeRoleRegister"
                         className="absolute inset-0 bg-brand-500 rounded-lg shadow-md"
-                        transition={{ type: "spring", bounce: 0.15, duration: 0.5 }}
+                        transition={{
+                          type: "spring",
+                          bounce: 0.15,
+                          duration: 0.5,
+                        }}
                       />
                     )}
                   </button>
@@ -218,10 +266,12 @@ export default function Register() {
 
             {/* Name */}
             <div className="space-y-1.5">
-              <label className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">Nama Lengkap</label>
+              <label className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                Nama Lengkap
+              </label>
               <div className="relative group">
                 <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500 group-focus-within:text-brand-600 dark:text-brand-dark-accent transition-colors" />
-                <input 
+                <input
                   type="text"
                   required
                   value={name}
@@ -234,22 +284,28 @@ export default function Register() {
 
             {/* Identifier (NIM/NIP/ID) */}
             <div className="space-y-1.5">
-              <label className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">{getIdentifierLabel()}</label>
+              <label className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                {getIdentifierLabel()}
+              </label>
               <div className="relative group">
-                <Contact className={cn(
-                  "absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 transition-colors",
-                  identifierError ? "text-red-500" : "text-slate-500 group-focus-within:text-brand-600 dark:text-brand-dark-accent"
-                )} />
-                <input 
+                <Contact
+                  className={cn(
+                    "absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 transition-colors",
+                    identifierError
+                      ? "text-red-500"
+                      : "text-slate-500 group-focus-within:text-brand-600 dark:text-brand-dark-accent",
+                  )}
+                />
+                <input
                   type="text"
                   required
                   value={identifier}
                   onChange={(e) => setIdentifier(e.target.value)}
                   className={cn(
                     "w-full pl-10 pr-4 py-3.5 bg-slate-50 dark:bg-[#1E1E2F] border rounded-xl focus:outline-none transition-all placeholder:text-slate-400/70",
-                    identifierError 
-                      ? "border-red-500 text-red-500 focus:ring-2 focus:ring-red-500/20" 
-                      : "border-slate-200 dark:border-[#3F3F5A]/30 focus:ring-2 focus:ring-brand-500/50 focus:border-brand-500 text-slate-900 dark:text-[#F5F5F5]"
+                    identifierError
+                      ? "border-red-500 text-red-500 focus:ring-2 focus:ring-red-500/20"
+                      : "border-slate-200 dark:border-[#3F3F5A]/30 focus:ring-2 focus:ring-brand-500/50 focus:border-brand-500 text-slate-900 dark:text-[#F5F5F5]",
                   )}
                   placeholder={getIdentifierPlaceholder()}
                 />
@@ -260,39 +316,49 @@ export default function Register() {
                 )}
               </div>
               {identifierError && (
-                <p className="text-[10px] text-red-500 font-extrabold mt-1">{identifierError}</p>
+                <p className="text-[10px] text-red-500 font-extrabold mt-1">
+                  {identifierError}
+                </p>
               )}
             </div>
 
             {/* WhatsApp */}
             <div className="space-y-1.5">
-              <label className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">Nomor WhatsApp</label>
+              <label className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                Nomor WhatsApp
+              </label>
               <div className="relative group">
-                <Phone className={cn(
-                  "absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 transition-colors",
-                  whatsappError ? "text-red-500" : "text-slate-500 group-focus-within:text-brand-600 dark:text-brand-dark-accent"
-                )} />
-                <input 
+                <Phone
+                  className={cn(
+                    "absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 transition-colors",
+                    whatsappError
+                      ? "text-red-500"
+                      : "text-slate-500 group-focus-within:text-brand-600 dark:text-brand-dark-accent",
+                  )}
+                />
+                <input
                   type="tel"
                   required
                   value={whatsappNumber}
                   onChange={(e) => handleWhatsappChange(e.target.value)}
                   className={cn(
                     "w-full pl-10 pr-4 py-3.5 bg-slate-50 dark:bg-[#1E1E2F] border rounded-xl focus:outline-none transition-all placeholder:text-slate-400/70",
-                    whatsappError 
-                      ? "border-red-500 text-red-500 focus:ring-2 focus:ring-red-500/20" 
-                      : "border-slate-200 dark:border-[#3F3F5A]/30 focus:ring-2 focus:ring-brand-500/50 focus:border-brand-500 text-slate-900 dark:text-[#F5F5F5]"
+                    whatsappError
+                      ? "border-red-500 text-red-500 focus:ring-2 focus:ring-red-500/20"
+                      : "border-slate-200 dark:border-[#3F3F5A]/30 focus:ring-2 focus:ring-brand-500/50 focus:border-brand-500 text-slate-900 dark:text-[#F5F5F5]",
                   )}
                   placeholder="+628..."
                 />
               </div>
               {whatsappError && (
-                <p className="text-[10px] text-red-500 font-extrabold mt-1">{whatsappError}</p>
+                <p className="text-[10px] text-red-500 font-extrabold mt-1">
+                  {whatsappError}
+                </p>
               )}
             </div>
 
             <div className="pt-4">
-              <button 
+              <button
                 type="submit"
                 disabled={loading || !isFormValid}
                 className="w-full py-4 bg-brand-dark-accent-light hover:bg-brand-dark-accent-hover text-brand-dark-on-accent font-bold rounded-xl shadow-lg shadow-brand-500/20 hover:shadow-brand-500/40 transition-all hover:scale-105 active:scale-95 flex items-center justify-center gap-2 group disabled:opacity-50 disabled:cursor-not-allowed disabled:scale-100"
@@ -310,7 +376,7 @@ export default function Register() {
           </form>
 
           <div className="mt-8 pt-6 border-t border-slate-100 dark:border-[#3F3F5A]/20 text-center">
-            <button 
+            <button
               onClick={() => logout()}
               className="text-sm text-slate-500 hover:text-slate-700 dark:text-[#B4B4C8] dark:hover:text-white transition-colors"
             >

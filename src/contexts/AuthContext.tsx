@@ -942,26 +942,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     }
 
     let initialRole = data.role || "mahasiswa";
-    // ✅ FIX: staff tetap staff, tidak dikonversi ke admin secara paksa
+    // ✅ FIX: Respect user-selected role (staff stays staff, not converted to admin)
     let finalRole: Role = initialRole as Role;
 
+    // Security: Force student domain to mahasiswa role
     if (email.endsWith("@student.uin-malang.ac.id")) {
       finalRole = "mahasiswa";
     } else {
+      // Check role mapping for override
       try {
         const mappingRef = doc(db, "role_mappings", email);
         const mappingSnap = await getDoc(mappingRef);
         if (mappingSnap.exists()) {
           const mappedRole = mappingSnap.data().role;
           finalRole = mappedRole as Role;
-        } else if (
-          finalRole === ("admin" as any) &&
-          email !== "gama96954@gmail.com"
-        ) {
+        } else if (finalRole === "admin" && email !== "gama96954@gmail.com") {
+          // ✅ FIX: Only downgrade actual "admin" role (not "staff")
+          // Staff role is user-selected and should be respected
           finalRole = email.endsWith("@uin-malang.ac.id")
             ? "dosen"
             : "mahasiswa";
         }
+        // ✅ NEW: Respect "staff" role - don't downgrade it
       } catch (e) {
         console.warn("Failed to check role mapping:", e);
       }
