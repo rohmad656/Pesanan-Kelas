@@ -23,6 +23,7 @@ import toast from "react-hot-toast";
 import { motion, AnimatePresence } from "motion/react";
 import { GoogleButton } from "../components/GoogleButton";
 import RoleChangeModal from "../components/RoleChangeModal";
+import { SupportEmailLink } from "../components/SupportEmailLink";
 import { PROJECT_NAME, SUPPORT_EMAIL, SUPPORT_EMAIL_ALT } from "../constants";
 
 export default function Login() {
@@ -484,7 +485,6 @@ export default function Login() {
                           : "Masuk untuk mengelola jadwal kampus Anda"}
                     </p>
                   </motion.div>
-
                   {/* Role Selector */}
                   {!isForgotPassword && (
                     <motion.div
@@ -524,12 +524,11 @@ export default function Login() {
                       ))}
                     </motion.div>
                   )}
-
                   {error && (
                     <motion.div
                       initial={{ opacity: 0, height: 0 }}
                       animate={{ opacity: 1, height: "auto" }}
-                      className="mb-4 p-4 bg-red-500/10 border border-red-500/50 rounded-lg text-red-500 dark:text-red-400 text-sm text-center flex flex-col items-center gap-2"
+                      className="mb-4 p-4 bg-red-500/10 border border-red-500/50 rounded-lg text-red-500 dark:text-red-400 text-sm text-center flex flex-col items-center gap-3"
                     >
                       <div className="flex items-center gap-2">
                         <AlertCircle className="w-5 h-5 shrink-0" />
@@ -549,52 +548,38 @@ export default function Login() {
                       )}
                       {error.includes("sudah terdaftar sebagai") &&
                         conflictInfo && (
-                          <div className="flex flex-col gap-1">
+                          <div className="flex flex-col gap-2 w-full mt-2">
                             <button
                               type="button"
                               onClick={() => setIsRoleModalOpen(true)}
-                              className="mt-2 text-brand-400 hover:text-brand-300 font-bold underline underline-offset-4 text-xs transition-colors"
+                              className="px-3 py-1.5 text-xs font-bold text-brand-400 hover:text-brand-300 underline underline-offset-2 transition-colors"
                             >
                               Ajukan Perubahan Peran
                             </button>
-                            <div className="mt-1 flex flex-col items-center gap-0.5">
-                              <span className="text-[9px] text-slate-500 italic">
-                                Gunakan email ini untuk bantuan teknis aplikasi{" "}
-                                {PROJECT_NAME}:
-                              </span>
-                              <a
-                                href={`mailto:${SUPPORT_EMAIL}`}
-                                className="text-[10px] text-brand-400 hover:text-brand-300 font-medium transition-colors"
-                              >
-                                Email Support Kampus: {SUPPORT_EMAIL}
-                              </a>
-                              <span className="text-[8px] text-slate-500">
-                                Alternatif: {SUPPORT_EMAIL_ALT}
-                              </span>
-                            </div>
+                            <SupportEmailLink
+                              email={SUPPORT_EMAIL}
+                              fallbackEmail={SUPPORT_EMAIL_ALT}
+                              variant="block"
+                              size="sm"
+                              showIcon={false}
+                            />
                           </div>
                         )}
                       {!error.includes("sudah terdaftar sebagai") &&
                         error.length > 0 && (
-                          <div className="mt-2 flex flex-col items-center gap-1">
-                            <p className="text-[10px] text-slate-500 font-medium">
-                              Bantuan Teknis {PROJECT_NAME}:
-                            </p>
-                            <a
-                              href={`mailto:${SUPPORT_EMAIL}`}
-                              className="text-[10px] text-red-400 hover:text-red-300 transition-colors underline underline-offset-2"
-                            >
-                              Email Support Kampus: {SUPPORT_EMAIL}
-                            </a>
-                            <span className="text-[8px] text-slate-500">
-                              Fallback: {SUPPORT_EMAIL_ALT}
-                            </span>
+                          <div className="mt-2 w-full">
+                            <SupportEmailLink
+                              email={SUPPORT_EMAIL}
+                              fallbackEmail={SUPPORT_EMAIL_ALT}
+                              variant="block"
+                              size="sm"
+                              showIcon={false}
+                            />
                           </div>
                         )}
                     </motion.div>
                   )}
-
-                  {/* Form Inputs */}
+                  ){/* Form Inputs */}
                   <motion.div
                     variants={{
                       hidden: { opacity: 0, y: 10 },
@@ -947,7 +932,6 @@ export default function Login() {
                       )}
                     </AnimatePresence>
                   </motion.div>
-
                   {/* SSO Options */}
                   {!isForgotPassword && (
                     <motion.div
