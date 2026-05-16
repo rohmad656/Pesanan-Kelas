@@ -715,6 +715,163 @@ async function startServer() {
     }
   });
 
+  // ✅ IMPROVED: Enhanced Email Check with better status detection
+  app.get("/api/auth/check-email-v2", async (req, res) => {
+    const { email, excludeUid } = req.query;
+    if (!email || typeof email !== "string") {
+      return res.status(400).json({ error: "Email is required" });
+    }
+
+    try {
+      const db = getFirestore(admin.app());
+      const cleanEmail = email.toLowerCase().trim();
+
+      // Find ALL Firestore records with this email
+      const firestoreRecords = await db
+        .collection("users")
+        .where("email", "==", cleanEmail)
+        .get();
+
+      let primaryRecord = null;
+      let activeAuthUid = null;
+      let orphanedCount = 0;
+
+      // Check Auth status for each Firestore record
+      for (const doc of firestoreRecords.docs) {
+        if (excludeUid && doc.id === excludeUid) continue;
+
+        try {
+          await admin.auth().getUser(doc.id);
+          if (!activeAuthUid) {
+            activeAuthUid = doc.id;
+            primaryRecord = { uid: doc.id, data: doc.data() };
+          }
+        } catch (e: any) {
+          if (e.code === "auth/user-not-found") {
+            orphanedCount++;
+          }
+        }
+      }
+
+      // Determine response based on findings
+      if (firestoreRecords.empty) {
+        return res.json({
+          available: true,
+          status: "email_not_found",
+          message: "Email belum terdaftar",
+        });
+      }
+
+      if (activeAuthUid && primaryRecord) {
+        return res.json({
+          available: false,
+          status: "email_active",
+          message: `Email ${cleanEmail} sudah terdaftar.`,
+          role: primaryRecord.data.role || "mahasiswa",
+          name: primaryRecord.data.name,
+          uid: activeAuthUid,
+        });
+      }
+
+      if (orphanedCount > 0 && !activeAuthUid) {
+        return res.json({
+          available: true,
+          status: "email_orphaned",
+          message:
+            "Email ini ditemukan dalam sistem tetapi belum sepenuhnya aktif.",
+          suggestion: "register_new",
+        });
+      }
+
+      return res.json({
+        available: true,
+        status: "unknown",
+        message: "Tidak dapat menentukan status email.",
+      });
+    } catch (error: any) {
+      console.error("Check Email V2 Error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // ✅ NEW: Email Sync Endpoint - Fix mismatched email/pending email
+  app.post("/api/auth/sync-email", async (req, res) => {
+    const { userToken } = req.body;
+    if (!userToken) {
+      return res.status(400).json({ error: "User token required" });
+    }
+
+    try {
+      const decodedToken = await admin.auth().verifyIdToken(userToken);
+      const db = getFirestore(admin.app());
+      const uid = decodedToken.uid;
+
+      // Get Auth user
+      const authUser = await admin.auth().getUser(uid);
+      const authEmail = authUser.email;
+
+      // Get Firestore user
+      const docSnap = await db.collection("users").doc(uid).get();
+      const userData = docSnap.data();
+
+      if (!userData) {
+        return res.status(404).json({ error: "User profile not found" });
+      }
+
+      const firestoreEmail = userData.email;
+      const pendingEmail = userData.pendingEmail;
+
+      // Check for mismatches
+      const issues = [];
+      const updates: any = {};
+
+      if (authEmail && firestoreEmail && authEmail !== firestoreEmail) {
+        issues.push(
+          `Email mismatch: Auth="${authEmail}" vs Firestore="${firestoreEmail}"`,
+        );
+        updates.email = authEmail;
+        if (pendingEmail === firestoreEmail) {
+          updates.pendingEmail = null;
+        }
+      }
+
+      if (pendingEmail && authEmail && pendingEmail === authEmail) {
+        issues.push(`Pending email "${pendingEmail}" is verified`);
+        updates.email = authEmail;
+        updates.pendingEmail = null;
+      }
+
+      if (Object.keys(updates).length === 0) {
+        return res.json({
+          synced: false,
+          status: "already_sync",
+          message: "Email sudah tersinkronisasi",
+        });
+      }
+
+      updates.updatedAt = admin.firestore.FieldValue.serverTimestamp();
+      await db.collection("users").doc(uid).update(updates);
+
+      // Log the sync
+      await db.collection("audit_logs").add({
+        action: "EMAIL_SYNC",
+        userId: uid,
+        timestamp: admin.firestore.FieldValue.serverTimestamp(),
+        details: `Email sync resolved: ${issues.join("; ")}`,
+      });
+
+      return res.json({
+        synced: true,
+        status: "sync_complete",
+        message: "Email berhasil tersinkronisasi",
+        changes: updates,
+      });
+    } catch (error: any) {
+      console.error("Email Sync Error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // Password Reset Endpoint (Backend Auth + SMTP + Audit)
   app.post("/api/auth/reset-password", async (req, res) => {
     const { email, continueUrl } = req.body;

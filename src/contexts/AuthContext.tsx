@@ -346,6 +346,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 
     const result = await signInWithEmailAndPassword(auth, emailToUse, password);
 
+    // ✅ NEW: Auto-sync email after successful login
+    try {
+      const token = await result.user.getIdToken();
+      const syncRes = await fetch("/api/auth/sync-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userToken: token }),
+      });
+
+      if (syncRes.ok) {
+        const syncData = await syncRes.json();
+        if (syncData.synced) {
+          console.log("[AUTH] Email synced after login:", syncData.changes);
+        }
+      }
+    } catch (e) {
+      console.warn("Email sync after login failed (non-critical):", e);
+    }
+
     try {
       const docRef = doc(db, "users", result.user.uid);
       const docSnap = await getDoc(docRef);
@@ -425,19 +444,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       }
     } else {
       try {
+        // ✅ FIX: Use v2 endpoint for better status detection
         const res = await fetch(
-          `/api/auth/check-email?email=${encodeURIComponent(emailOrId)}`,
+          `/api/auth/check-email-v2?email=${encodeURIComponent(emailOrId)}`,
         );
         if (res.ok) {
           const checkData = await res.json();
-          if (!checkData.available) {
+
+          // ✅ NEW: Better status handling
+          if (checkData.status === "email_active") {
             setConflictInfo({ email: emailOrId, role: checkData.role });
             const error: any = new Error(
-              `Email ${emailOrId} sudah terdaftar sebagai ${checkData.role?.toUpperCase()}. Silakan Login menggunakan profil ${checkData.role?.toUpperCase()}, atau ajukan perubahan peran jika salah.`,
+              `Email ${emailOrId} sudah terdaftar sebagai ${checkData.role?.toUpperCase()}. Silakan Login menggunakan profil ini, atau hubungi Admin jika ada pertanyaan.`,
             );
             error.code = "custom/email-already-in-use";
             throw error;
+          } else if (checkData.status === "email_orphaned") {
+            // ✅ NEW: Handle orphaned records gracefully
+            toast.warning(
+              "Email ini pernah terdaftar sebelumnya. Sistem sedang mempersiapkan profil Anda...",
+            );
           }
+          // If email_not_found or unknown, allow registration to proceed
         }
       } catch (e: any) {
         if (e.code === "custom/email-already-in-use") throw e;
