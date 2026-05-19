@@ -483,6 +483,42 @@ async function startServer() {
     }
   });
 
+  app.post("/api/auth/welcome-notification", async (req, res) => {
+    const { email, name, role } = req.body;
+    if (!email || !name || !role) return res.status(400).json({ error: "Missing required fields" });
+
+    try {
+      await sendMail({
+        to: email,
+        subject: `Pendaftaran Berhasil - ${process.env.PROJECT_NAME || 'Portal Kampus'}`,
+        html: `
+          <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 12px; background-color: #f9fafb;">
+            <div style="text-align: center; margin-bottom: 30px;">
+              <h1 style="color: #4f46e5; margin: 0;">Selamat Bergabung!</h1>
+              <p style="color: #6b7280; font-size: 16px;">Pendaftaran Anda telah berhasil.</p>
+            </div>
+            <div style="background-color: white; padding: 24px; border-radius: 8px; border: 1px solid #e5e7eb;">
+              <p>Halo <strong>${name}</strong>,</p>
+              <p>Selamat bergabung di platform <strong>${process.env.PROJECT_NAME || 'Portal Kampus'}</strong>! Akun Anda telah berhasil diaktifkan dengan peran sebagai <strong>${role.toUpperCase()}</strong>.</p>
+              <p>Anda sekarang dapat mengakses seluruh fitur yang tersedia, mulai dari reservasi ruangan hingga pelaporan kendala.</p>
+              <div style="text-align: center; margin: 30px 0;">
+                <a href="${req.protocol}://${req.get("host")}/dashboard" style="background-color: #4f46e5; color: white; padding: 12px 32px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">Masuk ke Dashboard</a>
+              </div>
+            </div>
+            <p style="color: #6b7280; font-size: 12px; margin-top: 30px; text-align: center;">
+              Ini adalah email otomatis. Silakan hubungi tim dukungan jika Anda memiliki pertanyaan.
+              <br />© 2026 ${process.env.PROJECT_NAME || 'Portal Kampus'}
+            </p>
+          </div>
+        `
+      });
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Welcome email failed:", error);
+      res.status(500).json({ error: "Failed to send welcome email" });
+    }
+  });
+
   // NIM Availability Check (For registration flow)
   app.get("/api/auth/check-nim", async (req, res) => {
     const { nim, excludeUid } = req.query;

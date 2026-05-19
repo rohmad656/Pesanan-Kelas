@@ -133,7 +133,7 @@ export default function Profile() {
   };
 
   const isFormValid = name && nim && !nimError && whatsappNumber && !whatsappError;
-  const isEmailVerified = user?.emailVerified;
+  const isEmailVerified = user?.emailVerified || user?.providerData.some(p => p.providerId === 'google.com');
 
   const handleResendVerification = async () => {
     setIsResending(true);
@@ -523,24 +523,20 @@ export default function Profile() {
               </h3>
               <div className="space-y-5">
                 <div className="space-y-4">
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <p className="text-sm font-bold text-slate-700 dark:text-[#F5F5F5]">Akun Google Terhubung</p>
-                      <p className="text-[10px] text-slate-500">Memungkinkan Anda login menggunakan akun Google Anda.</p>
-                    </div>
-                    {isGoogleLinked ? (
-                      <div className="flex items-center gap-2 px-3 py-1.5 bg-green-500/10 text-green-500 rounded-lg border border-green-500/20 text-[10px] font-extrabold uppercase">
-                        <CheckCircle2 className="w-3 h-3" /> Terhubung
+                  {!isGoogleLinked && (
+                    <div className="flex justify-between items-center">
+                      <div>
+                        <p className="text-sm font-bold text-slate-700 dark:text-[#F5F5F5]">Akun Google Belum Terhubung</p>
+                        <p className="text-[10px] text-slate-500">Hubungkan untuk dapat masuk menggunakan Akun Google di masa mendatang.</p>
                       </div>
-                    ) : (
                       <button 
                         onClick={handleLinkGoogle}
                         className="flex items-center gap-2 px-3 py-1.5 bg-brand-600 hover:bg-brand-700 text-white rounded-lg shadow-sm text-[10px] font-bold transition-all active:scale-95"
                       >
                         Hubungkan Google
                       </button>
-                    )}
-                  </div>
+                    </div>
+                  )}
                   
                   <div className="flex justify-between items-center">
                     <p className="text-sm font-bold text-slate-700 dark:text-[#F5F5F5]">Kanal Notifikasi</p>

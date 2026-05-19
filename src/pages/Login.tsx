@@ -23,6 +23,7 @@ export default function Login() {
   const [loginStep, setLoginStep] = useState<string>('');
   const [showRedirectOption, setShowRedirectOption] = useState(false);
   const [error, setError] = useState('');
+  const [actualRole, setActualRole] = useState<Role | 'staff' | null>(null);
   
   useEffect(() => {
     // Force dark mode on login page
@@ -213,7 +214,8 @@ export default function Login() {
         setError('Data profil Anda tidak ditemukan. Mengarahkan ke halaman pendaftaran...');
         // pendingRegistration is already set in AuthContext, Login.tsx useEffect will handle redirect
       } else if (err.code === 'custom/role-mismatch') {
-        setError(err.message || 'Peran akun Anda tidak sesuai dengan portal ini. Silakan ganti tipe akun di atas.');
+        setError(err.message || 'Peran akun Anda tidak sesuai dengan portal ini.');
+        setActualRole(err.actualRole);
       } else if (err.code === 'custom/auth-exists-profile-missing') {
         setError('Akun autentikasi ditemukan tetapi data profil kosong. Silakan lengkapi pendaftaran ulang.');
       } else if (err.code === 'auth/invalid-credential') {
@@ -290,6 +292,7 @@ export default function Login() {
         setError(err.message);
       } else if (err.code === 'custom/role-mismatch') {
         setError(err.message || 'Peran akun Anda tidak sesuai dengan portal ini.');
+        setActualRole(err.actualRole);
       } else {
         setError(`Gagal masuk: ${err.message || err.code || 'Kesalahan tidak diketahui'}. Tips: Pastikan akun Google Anda aktif.`);
       }
@@ -499,16 +502,30 @@ export default function Login() {
                       >
                         Ajukan Perubahan Peran
                       </button>
-                      <div className="mt-1 flex flex-col items-center gap-0.5">
-                        <span className="text-[9px] text-slate-500 italic">Gunakan email ini untuk bantuan teknis aplikasi {PROJECT_NAME}:</span>
-                        <a href={`mailto:${SUPPORT_EMAIL}`} className="text-[10px] text-brand-400 hover:text-brand-300 font-medium transition-colors">
-                          Email Support Kampus: {SUPPORT_EMAIL}
-                        </a>
-                        <span className="text-[8px] text-slate-500">Alternatif: {SUPPORT_EMAIL_ALT}</span>
-                      </div>
                     </div>
                   )}
-                  {!error.includes('sudah terdaftar sebagai') && error.length > 0 && (
+
+                  {actualRole && error.includes('Portal ini untuk') && (
+                    <div className="mt-4 flex flex-col items-center gap-3 w-full animate-in fade-in slide-in-from-top-2">
+                       <p className="text-xs text-slate-500 dark:text-[#B4B4C8] font-bold">Apakah Anda ingin pindah ke portal {actualRole === 'staff' || actualRole === 'admin' ? 'STAF/ADMIN' : actualRole.toUpperCase()}?</p>
+                       <button
+                         type="button"
+                         onClick={() => {
+                           const targetRole = (actualRole === 'staff' || actualRole === 'admin') ? 'admin' : (actualRole as Role);
+                           setRole(targetRole);
+                           setError('');
+                           setActualRole(null);
+                           toast.success(`Berhasil dialihkan ke portal ${targetRole.toUpperCase()}`);
+                         }}
+                         className="px-6 py-2 bg-brand-500 hover:bg-brand-600 text-white rounded-full text-xs font-bold shadow-lg transition-all hover:scale-105 active:scale-95 flex items-center gap-2"
+                       >
+                         <ShieldCheck className="w-4 h-4" />
+                         Ya, Pindah & Masuk Ulang
+                       </button>
+                    </div>
+                  )}
+
+                  {!error.includes('sudah terdaftar sebagai') && !actualRole && error.length > 0 && (
                     <div className="mt-2 flex flex-col items-center gap-1">
                       <p className="text-[10px] text-slate-500 font-medium">Bantuan Teknis {PROJECT_NAME}:</p>
                       <a href={`mailto:${SUPPORT_EMAIL}`} className="text-[10px] text-red-400 hover:text-red-300 transition-colors underline underline-offset-2">

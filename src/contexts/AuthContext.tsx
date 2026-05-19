@@ -163,6 +163,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       } else {
         setUser(null);
         setProfile(null);
+        setPendingRegistration(null);
         localStorage.removeItem('user_profile');
         if (unsubscribeProfile) {
           unsubscribeProfile();
@@ -251,6 +252,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
           const error: any = new Error(msg);
           error.code = 'custom/role-mismatch';
+          error.actualRole = userData.role;
           throw error;
         }
       }
@@ -273,7 +275,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }).catch(e => console.warn("Failed to log login event:", e))
       ]);
     } catch (error: any) {
-      if (error.code === 'custom/user-not-found') throw error;
+      if (error.code?.startsWith('custom/')) throw error;
       handleFirestoreError(error, OperationType.GET, `users/${result.user.uid}`);
     }
   };
@@ -297,7 +299,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
     } catch (e: any) {
-      if (e.code === 'custom/email-already-in-use') throw e;
+      if (e.code?.startsWith('custom/')) throw e;
     }
 
     try {
@@ -689,6 +691,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             
             const err: any = new Error(msg);
             err.code = 'custom/role-mismatch';
+            err.actualRole = userData.role;
             throw err;
           }
         } else {
@@ -816,6 +819,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }).catch(e => console.warn("Failed to log registration completion:", e))
     ]);
 
+    // Send Welcome Email if verified (Google or just finished registration)
+    const isVerified = auth.currentUser.emailVerified || auth.currentUser.providerData.some(p => p.providerId === 'google.com');
+    if (isVerified) {
+      fetch('/api/auth/welcome-notification', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: newProfile.email,
+          name: newProfile.name,
+          role: newProfile.role
+        })
+      }).catch(err => console.warn("Failed to trigger welcome email notification:", err));
+    }
+
     setProfile(newProfile);
     setPendingRegistration(null);
     localStorage.setItem('user_profile', JSON.stringify(newProfile));
@@ -826,10 +843,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       localStorage.removeItem('user_profile');
       localStorage.removeItem('user_role_last_session');
       localStorage.removeItem('intended_role');
+      setPendingRegistration(null);
       await signOut(auth);
     } catch (error) {
       console.error('Logout error:', error);
       // Fallback for safety
+      setPendingRegistration(null);
       await signOut(auth).catch(() => {});
     }
   };

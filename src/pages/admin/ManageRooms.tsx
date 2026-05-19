@@ -5,6 +5,7 @@ import { Plus, Edit2, Trash2, XCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 import BaseModal from '../../components/BaseModal';
+import ImageUpload from '../../components/ImageUpload';
 
 export default function ManageRooms() {
   const [rooms, setRooms] = useState<any[]>([]);
@@ -256,11 +257,11 @@ export default function ManageRooms() {
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-[#B4B4C8]">URL Gambar (Opsional)</label>
-              <input 
-                type="url" value={formData.imageUrl} onChange={(e) => setFormData({...formData, imageUrl: e.target.value})}
-                placeholder="https://example.com/image.jpg"
-                className="w-full px-4 py-2.5 bg-slate-50 dark:bg-[#32324A] border border-slate-200 dark:border-[#3F3F5A]/50 rounded-xl text-slate-900 dark:text-[#F5F5F5] focus:outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+              <ImageUpload 
+                onUpload={(url) => setFormData({...formData, imageUrl: url})}
+                currentUrl={formData.imageUrl}
+                folder="rooms"
+                label="Foto Ruangan (Unggah Gambar)"
               />
             </div>
 

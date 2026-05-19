@@ -48,8 +48,10 @@ export interface FirestoreErrorInfo {
 }
 
 export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const originalMessage = error instanceof Error ? error.message : String(error);
+  
   const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
+    error: originalMessage,
     authInfo: {
       userId: auth.currentUser?.uid,
       email: auth.currentUser?.email,
@@ -66,6 +68,19 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
     operationType,
     path
   };
-  console.error('Firestore Error: ', JSON.stringify(errInfo));
-  throw new Error(JSON.stringify(errInfo));
+  
+  console.error('Firestore Error Detailed: ', JSON.stringify(errInfo));
+  
+  // Throw a more human-friendly error if it's a known Firestore permission issue
+  if (originalMessage.includes('insufficient permissions')) {
+    throw new Error('Anda tidak memiliki izin untuk melakukan aksi ini. Hubungi administrator jika Anda merasa ini adalah kesalahan.');
+  }
+  
+  // If it's already a custom error message from our context, just throw it
+  if (originalMessage.includes('Data profil Anda tidak ditemukan') || originalMessage.startsWith('{')) {
+     // If it's already JSON (somehow), just throw it as is or try to parse
+     throw new Error(originalMessage);
+  }
+
+  throw new Error(`Terjadi kesalahan pada database (${operationType}): ${originalMessage}`);
 }

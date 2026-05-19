@@ -28,6 +28,7 @@ import AuditReports from './pages/admin/AuditReports';
 import RoleRequests from './pages/admin/RoleRequests';
 import ResetPassword from './pages/ResetPassword';
 import Register from './pages/Register';
+import VerifyEmail from './pages/VerifyEmail';
 
 const ProtectedRoute = ({ children, allowedRoles }: { children: React.ReactNode, allowedRoles?: string[] }) => {
   const { user, profile, loading } = useAuth();
@@ -41,8 +42,14 @@ const ProtectedRoute = ({ children, allowedRoles }: { children: React.ReactNode,
     return <Navigate to="/login" />;
   }
 
+  // Check email verification
+  const isEmailVerified = user.emailVerified || user.providerData.some(p => p.providerId === 'google.com');
+  if (!isEmailVerified && location.pathname !== '/verifikasi-email') {
+    return <Navigate to="/verifikasi-email" />;
+  }
+
   // Redirect to profile if not completed, unless already on profile page or is admin
-  if (!profile.profileCompleted && location.pathname !== '/profil' && profile.role !== 'admin') {
+  if (profile.profileCompleted === false && location.pathname !== '/profil' && profile.role !== 'admin') {
     return <Navigate to="/profil" />;
   }
 
@@ -102,6 +109,7 @@ export default function App() {
               <Route path="/login" element={<Login />} />
               <Route path="/reset-password" element={<ResetPassword />} />
               <Route path="/daftar" element={<Register />} />
+              <Route path="/verifikasi-email" element={<VerifyEmail />} />
               
               <Route element={
                 <ProtectedRoute>

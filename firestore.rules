@@ -282,12 +282,10 @@ service cloud.firestore {
       allow create: if isAuthenticated() && isOwner(userId) && isValidUser(request.resource.data) &&
                     request.resource.data.uid == request.auth.uid &&
                     request.resource.data.createdAt == request.time &&
-                    // Role validation safety
-                    (request.resource.data.role == 'admin' || request.resource.data.role == 'staff' ? 
-                      (request.resource.data.email == "gama96954@gmail.com" || 
-                       request.resource.data.email == "mirejrohmad@gmail.com" ||
-                       exists(/databases/$(database)/documents/role_mappings/$(request.resource.data.email))) 
-                      : true);
+                    // Role validation safety: only restrict admin/staff roles
+                    (!(request.resource.data.role in ['admin', 'staff']) || 
+                      (request.resource.data.email in ["gama96954@gmail.com", "mirejrohmad@gmail.com"]) ||
+                      exists(/databases/$(database)/documents/role_mappings/$(request.resource.data.email)));
       allow update: if isAuthenticated() && (
                     (isValidUser(request.resource.data) && areImmutableFieldsUnchanged(['uid', 'createdAt']) &&
                      ((isOwner(userId) && areImmutableFieldsUnchanged(['role', 'deleted', 'deletedAt', 'deletedBy'])) || isStaff()))
