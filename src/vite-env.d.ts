@@ -1,11 +1,11 @@
 /// <reference types="vite/client" />
 
 interface ImportMetaEnv {
-  readonly VITE_EMAILJS_SERVICE_ID: "service_49kcnm2";
-  readonly VITE_EMAILJS_TEMPLATE_ID: "template_za15alq";
-  readonly VITE_EMAILJS_PUBLIC_KEY: "cy5XSqXK1y05jqzeK";
+  readonly VITE_EMAILJS_SERVICE_ID: string
+  readonly VITE_EMAILJS_TEMPLATE_ID: string
+  readonly VITE_EMAILJS_PUBLIC_KEY: string
 }
 
 interface ImportMeta {
-  readonly env: ImportMetaEnv;
+  readonly env: ImportMetaEnv
 }
