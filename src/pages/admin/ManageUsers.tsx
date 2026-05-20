@@ -113,13 +113,21 @@ export default function ManageUsers() {
     }
   };
 
-  const deleteContact = async (id: string) => {
-    if (!confirm('Hapus kontak ini?')) return;
+  const [contactToDelete, setContactToDelete] = useState<any | null>(null);
+  const [isDeletingContact, setIsDeletingContact] = useState<string | null>(null);
+
+  const handleDeleteContactConfirm = async () => {
+    if (!contactToDelete) return;
+    setIsDeletingContact(contactToDelete.id);
     try {
-      await deleteDoc(doc(db, 'admin_contacts', id));
-      toast.success('Kontak dihapus');
+      await deleteDoc(doc(db, 'admin_contacts', contactToDelete.id));
+      toast.success('Kontak resmi berhasil dihapus');
+      setContactToDelete(null);
     } catch (error) {
-      toast.error('Gagal menghapus');
+      console.error(error);
+      toast.error('Gagal menghapus kontak resmi');
+    } finally {
+      setIsDeletingContact(null);
     }
   };
 
@@ -554,7 +562,7 @@ export default function ManageUsers() {
                           {c.isActive ? 'Aktif' : 'Nonaktif'}
                         </button>
                         <button 
-                          onClick={() => deleteContact(c.id)}
+                          onClick={() => setContactToDelete(c)}
                           className="inline-flex items-center justify-center p-2.5 min-w-[44px] min-h-[44px] text-red-500 hover:bg-red-500/10 rounded-xl transition-all hover:scale-110 active:scale-95"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -615,6 +623,57 @@ export default function ManageUsers() {
           </div>
           <div className="pt-4 border-t border-slate-100 dark:border-[#3F3F5A]/20 text-center">
             <p className="text-[10px] text-slate-400 italic">Data dihapus dari sistem (Auth & Firestore).</p>
+          </div>
+        </div>
+      </BaseModal>
+
+      {/* Delete Contact Confirmation Modal */}
+      <BaseModal
+        isOpen={!!contactToDelete}
+        onClose={() => setContactToDelete(null)}
+        className="max-w-md"
+      >
+        <div className="space-y-6">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 bg-red-100 dark:bg-red-500/10 rounded-2xl flex items-center justify-center shrink-0">
+              <AlertTriangle className="w-6 h-6 text-red-600 dark:text-red-500" />
+            </div>
+            <div>
+              <h3 className="text-xl font-bold text-slate-900 dark:text-[#F5F5F5]">Hapus Kontak Resmi?</h3>
+              <p className="text-xs text-slate-500 dark:text-[#B4B4C8]">Tindakan ini tidak dapat dibatalkan</p>
+            </div>
+          </div>
+
+          <p className="text-slate-600 dark:text-[#B4B4C8] text-sm leading-relaxed">
+            Apakah Anda yakin ingin menghapus kontak resmi <span className="font-bold text-slate-900 dark:text-[#F5F5F5]">{contactToDelete?.name}</span>? 
+            Tindakan ini akan menghapus data kontak dari portal secara permanen. 
+            Data yang dihapus tidak dapat dipulihkan lagi.
+          </p>
+
+          <div className="flex gap-3">
+            <button
+              onClick={() => setContactToDelete(null)}
+              className="flex-1 px-4 py-2.5 bg-brand-600 text-white font-bold rounded-xl hover:bg-brand-700 shadow-lg shadow-brand-600/30 hover:shadow-brand-500/40 transition-all hover:scale-105 active:scale-95"
+            >
+              Batal
+            </button>
+            <button
+              onClick={handleDeleteContactConfirm}
+              disabled={!!isDeletingContact}
+              className="flex-1 px-4 py-2.5 bg-slate-100 dark:bg-[#32324A] text-red-600 dark:text-red-500 font-bold rounded-xl hover:bg-red-500/10 hover:shadow-lg dark:hover:bg-red-500/10 transition-all hover:scale-105 active:scale-95 disabled:opacity-50 disabled:scale-100 flex items-center justify-center gap-2"
+            >
+              {isDeletingContact ? (
+                <div className="w-5 h-5 border-2 border-red-200 border-t-red-600 rounded-full animate-spin" />
+              ) : (
+                <>
+                  <Trash2 className="w-4 h-4" />
+                  Hapus
+                </>
+              )}
+            </button>
+          </div>
+          <div className="pt-4 border-t border-slate-100 dark:border-[#3F3F5A]/20 text-center">
+            <p className="text-[10px] text-slate-400 italic">Data dihapus dari Firestore.</p>
           </div>
         </div>
       </BaseModal>

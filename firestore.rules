@@ -354,7 +354,13 @@ service cloud.firestore {
                       ('userId' in resource.data && resource.data.userId == request.auth.uid) ||
                       ('targetRole' in resource.data && isStaff())
                     );
-      allow delete: if isAdmin();
+      allow delete: if isAuthenticated() && (
+        isAdmin() ||
+        (resource.data.userId == request.auth.uid) ||
+        (resource.data.targetRole == 'admin' && isStaff()) ||
+        (resource.data.targetRole == 'staff' && isStaff()) ||
+        (resource.data.targetRole != null && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && resource.data.targetRole == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role)
+      );
     }
 
     match /audit_logs/{logId} {
