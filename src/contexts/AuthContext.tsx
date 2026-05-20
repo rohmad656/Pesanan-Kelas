@@ -350,6 +350,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     if (email === "gama96954@gmail.com" || (intendedRole === 'admin' && email.includes('admin'))) {
       finalRole = 'admin';
+    } else if (intendedRole === 'admin') {
+      finalRole = 'mahasiswa'; // Fallback to student role for regular users choosing Staf
     }
     
     // Force student role for student emails (Security)
@@ -673,7 +675,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           uid: currentUser.uid,
           email: email,
           name: currentUser.displayName || 'User Baru',
-          role: finalRole,
+          role: (finalRole === 'admin' && email !== "gama96954@gmail.com" && !email.includes('admin')) ? 'mahasiswa' : finalRole,
           nim: '', 
           whatsappNumber: '', 
           photoURL: currentUser.photoURL || '',

@@ -530,6 +530,26 @@ export default function Login() {
                 </motion.div>
               )}
 
+              {isRegistering && role === 'admin' && (
+                <motion.div
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  className="mb-6 p-4 bg-amber-500/10 border border-amber-500/30 text-amber-800 dark:text-amber-300 rounded-xl text-xs sm:text-sm flex gap-3 shadow-sm align-start"
+                >
+                  <AlertCircle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
+                  <div className="space-y-1 text-left">
+                    <p className="font-semibold text-amber-900 dark:text-amber-200">Informasi Pendaftaran Staf</p>
+                    <p className="leading-relaxed opacity-90">
+                      Anda akan otomatis terdaftar sebagai <span className="font-bold underline text-amber-900 dark:text-amber-200">Mahasiswa</span> terlebih dahulu.
+                    </p>
+                    <p className="leading-relaxed opacity-90 text-slate-600 dark:text-slate-300">
+                      Jika Anda memerlukan hak akses penuh sebagai <span className="font-bold text-amber-900 dark:text-amber-200">Staf</span>, silakan hubungi <span className="font-semibold underline text-amber-800 dark:text-amber-300">Contact Person</span> atau staf yang bersangkutan untuk verifikasi peran.
+                    </p>
+                  </div>
+                </motion.div>
+              )}
+
               {error && (
                 <motion.div 
                   initial={{ opacity: 0, height: 0 }}
