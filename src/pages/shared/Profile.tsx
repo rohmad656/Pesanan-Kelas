@@ -44,8 +44,6 @@ export default function Profile() {
   const [newPassword, setNewPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [notifPortal, setNotifPortal] = useState(profile?.notifPortal ?? true);
-  const [notifEmail, setNotifEmail] = useState(profile?.notifEmail ?? true);
-  const [notifWhatsApp, setNotifWhatsApp] = useState(profile?.notifWhatsApp ?? false);
   const [reminderMinutes, setReminderMinutes] = useState(profile?.reminderMinutes ?? 30);
   const [roleRequests, setRoleRequests] = useState<any[]>([]);
   const [isRoleModalOpen, setIsRoleModalOpen] = useState(false);
@@ -61,8 +59,6 @@ export default function Profile() {
       setWhatsappNumber(profile.whatsappNumber || (profile as any).whatsapp || '');
       setDivision(profile.division || '');
       setNotifPortal(profile.notifPortal ?? true);
-      setNotifEmail(profile.notifEmail ?? true);
-      setNotifWhatsApp(profile.notifWhatsApp ?? false);
       setReminderMinutes(profile.reminderMinutes ?? 30);
     }
   }, [profile]);
@@ -149,13 +145,7 @@ export default function Profile() {
 
   // Notification Status Text
   const getActiveChannelsText = () => {
-    const active = [];
-    if (notifPortal) active.push('Portal');
-    if (notifEmail) active.push('Email');
-    if (notifWhatsApp && whatsappNumber && !whatsappError) active.push('WhatsApp');
-    
-    if (active.length === 0) return 'Tidak ada kanal aktif. Anda tidak akan menerima notifikasi.';
-    return `Notifikasi akan dikirim ke: ${active.join(', ')}.`;
+    return 'Kanal Portal Aktif';
   };
 
   const handleSave = async (e: React.FormEvent) => {
@@ -163,8 +153,8 @@ export default function Profile() {
     if (!isFormValid) return;
 
     // Safety check: at least one channel MUST be active
-    if (!notifPortal && !notifEmail && (!notifWhatsApp || !whatsappNumber || whatsappError)) {
-      toast.error('Minimal satu kanal notifikasi harus aktif!');
+    if (!notifPortal) {
+      toast.error('Kanal notifikasi Portal harus aktif!');
       return;
     }
 
@@ -178,8 +168,8 @@ export default function Profile() {
         whatsappNumber,
         division,
         notifPortal,
-        notifEmail,
-        notifWhatsApp,
+        notifEmail: false,
+        notifWhatsApp: false,
         reminderMinutes
       });
 
@@ -527,57 +517,25 @@ export default function Profile() {
                   <div className="flex justify-between items-center">
                     <p className="text-sm font-bold text-slate-700 dark:text-[#F5F5F5]">Kanal Notifikasi</p>
                     <span className={cn(
-                      "text-[10px] px-2 py-0.5 rounded-full font-medium transition-colors",
-                      (!notifPortal && !notifEmail && !notifWhatsApp) ? "bg-red-500/10 text-red-500" : "bg-brand-500/10 text-brand-500 dark:text-brand-dark-accent"
+                      "text-[10px] px-2 py-0.5 rounded-full font-medium transition-colors bg-brand-500/10 text-brand-500 dark:text-brand-dark-accent"
                     )}>
                       {getActiveChannelsText()}
                     </span>
                   </div>
                   
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    <label className="group flex flex-col p-3 border border-slate-200 dark:border-[#3F3F5A]/30 rounded-xl hover:border-brand-400 dark:hover:border-brand-dark-accent transition-all cursor-pointer bg-white dark:bg-[#27273A]">
+                  <div className="grid grid-cols-1 gap-4">
+                    <label className="group flex flex-col p-3 border border-brand-200 dark:border-brand-dark-accent/40 rounded-xl bg-brand-50/5 dark:bg-brand-dark-accent/5">
                       <div className="flex items-center gap-3 mb-1">
                         <input 
                           type="checkbox" 
-                          checked={notifPortal}
-                          onChange={(e) => setNotifPortal(e.target.checked)}
+                          checked={true}
+                          disabled={true}
+                          readOnly={true}
                           className="w-4 h-4 rounded border-brand-dark-border-strong text-brand-700 dark:text-brand-dark-accent focus:ring-brand-dark-accent-light bg-slate-50 dark:bg-[#1E1E2F]" 
                         />
-                        <span className="text-slate-900 dark:text-[#F5F5F5] text-sm font-semibold">Portal</span>
+                        <span className="text-slate-900 dark:text-[#F5F5F5] text-sm font-semibold">Portal In-App (Eksklusif)</span>
                       </div>
-                      <span className="text-[10px] text-slate-500 dark:text-[#B4B4C8] ml-7">Notifikasi muncul di dashboard aplikasi.</span>
-                    </label>
-
-                    <label className="group flex flex-col p-3 border border-slate-200 dark:border-[#3F3F5A]/30 rounded-xl hover:border-brand-400 dark:hover:border-brand-dark-accent transition-all cursor-pointer bg-white dark:bg-[#27273A]">
-                      <div className="flex items-center gap-3 mb-1">
-                        <input 
-                          type="checkbox" 
-                          checked={notifEmail}
-                          onChange={(e) => setNotifEmail(e.target.checked)}
-                          className="w-4 h-4 rounded border-brand-dark-border-strong text-brand-700 dark:text-brand-dark-accent focus:ring-brand-dark-accent-light bg-slate-50 dark:bg-[#1E1E2F]" 
-                        />
-                        <span className="text-slate-900 dark:text-[#F5F5F5] text-sm font-semibold">Email</span>
-                      </div>
-                      <span className="text-[10px] text-slate-500 dark:text-[#B4B4C8] ml-7">Pesan dikirim ke inbox email terdaftar.</span>
-                    </label>
-
-                    <label className={cn(
-                      "group flex flex-col p-3 border border-slate-200 dark:border-[#3F3F5A]/30 rounded-xl hover:border-brand-400 dark:hover:border-brand-dark-accent transition-all cursor-pointer bg-white dark:bg-[#27273A]",
-                      whatsappError && "opacity-60 grayscale cursor-not-allowed"
-                    )}>
-                      <div className="flex items-center gap-3 mb-1">
-                        <input 
-                          type="checkbox" 
-                          checked={notifWhatsApp}
-                          disabled={!!whatsappError}
-                          onChange={(e) => setNotifWhatsApp(e.target.checked)}
-                          className="w-4 h-4 rounded border-brand-dark-border-strong text-brand-700 dark:text-brand-dark-accent focus:ring-brand-dark-accent-light bg-slate-50 dark:bg-[#1E1E2F] disabled:opacity-50" 
-                        />
-                        <span className="text-slate-900 dark:text-[#F5F5F5] text-sm font-semibold">WhatsApp</span>
-                      </div>
-                      <span className="text-[10px] text-slate-500 dark:text-[#B4B4C8] ml-7">
-                        {whatsappError ? 'Nomor WA belum valid.' : 'Pesan dikirim ke nomor WA terdaftar.'}
-                      </span>
+                      <span className="text-[10px] text-slate-500 dark:text-[#B4B4C8] ml-7">Seluruh notifikasi agenda dan pengingat akan dikirimkan langsung ke Portal dashboard aplikasi ini.</span>
                     </label>
                   </div>
                 </div>
