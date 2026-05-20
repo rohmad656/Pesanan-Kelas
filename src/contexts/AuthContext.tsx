@@ -246,27 +246,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         throw error;
       }
       
-      const userData = docSnap.data() as UserProfile;
+      let userData = docSnap.data() as UserProfile;
+
+      // Automatically upgrade admin users to 'admin' role if not already synced in Firestore
+      const isAdminEmail = result.user.email === "gama96954@gmail.com" || result.user.email === "mirejrohmad@gmail.com";
+      if (isAdminEmail && userData.role !== 'admin') {
+        userData.role = 'admin';
+        await updateDoc(docRef, { role: 'admin', updatedAt: serverTimestamp() }).catch(e => 
+          console.warn("Failed to auto-upgrade admin role in Firestore:", e)
+        );
+      }
 
       // ROLE VALIDATION (Post-Login Context Check)
       if (intendedRole && userData.role !== intendedRole) {
         // Admins and staff are allowed to log in from any portal/tab
         if (userData.role !== 'admin' && userData.role !== 'staff') {
-          const msg = `Gagal Masuk: Portal ini untuk ${intendedRole.toUpperCase()}, tetapi akun Anda memiliki peran ${userData.role.toUpperCase()}. Silakan gunakan portal yang tepat.`;
-          toast.error(msg, { duration: 5000 });
+          const msg = `Login berhasil! Mengalihkan ke Portal ${userData.role.toUpperCase()} (pilihan Anda sebelumnya: ${intendedRole.toUpperCase()})`;
+          toast.success(msg, { duration: 5000 });
           
-          // Log the unauthorized portal attempt
+          // Log the redirected portal attempt
           setDoc(doc(collection(db, 'audit_logs')), {
-            action: 'LOGIN_PORTAL_MISMATCH',
+            action: 'LOGIN_PORTAL_REDIRECT',
             performedBy: result.user.uid,
             timestamp: serverTimestamp(),
-            details: `User ${result.user.email} tried to access ${intendedRole} portal with ${userData.role} role.`
-          }).catch(e => console.warn("Log mismatch fail:", e));
-
-          const error: any = new Error(msg);
-          error.code = 'custom/role-mismatch';
-          error.actualRole = userData.role;
-          throw error;
+            details: `User ${result.user.email} was automatically redirected from ${intendedRole} portal to their actual role: ${userData.role}.`
+          }).catch(e => console.warn("Log redirect fail:", e));
         }
       }
 
@@ -701,16 +705,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       } else {
         userData = docSnap.data() as UserProfile;
 
+        // Automatically upgrade admin users to 'admin' role if not already synced in Firestore
+        const isAdminEmail = currentUser.email === "gama96954@gmail.com" || currentUser.email === "mirejrohmad@gmail.com";
+        if (isAdminEmail && userData.role !== 'admin') {
+          userData.role = 'admin';
+          await updateDoc(docRef, { role: 'admin', updatedAt: serverTimestamp() }).catch(e => 
+            console.warn("Failed to auto-upgrade admin role in Firestore:", e)
+          );
+        }
+
         // ROLE VALIDATION (Post-Login Context Check)
         if (intendedRole && userData.role !== intendedRole) {
           if (userData.role !== 'admin' && userData.role !== 'staff') {
-            const msg = `Gagal Masuk: Portal ini untuk ${intendedRole.toUpperCase()}, tetapi akun Anda memiliki peran ${userData.role.toUpperCase()}. Silakan gunakan portal yang tepat.`;
-            toast.error(msg, { duration: 5000 });
+            const msg = `Login berhasil! Mengalihkan ke Portal ${userData.role.toUpperCase()} (pilihan Anda sebelumnya: ${intendedRole.toUpperCase()})`;
+            toast.success(msg, { duration: 5000 });
             
-            const err: any = new Error(msg);
-            err.code = 'custom/role-mismatch';
-            err.actualRole = userData.role;
-            throw err;
+            // Log the redirected portal attempt
+            setDoc(doc(collection(db, 'audit_logs')), {
+              action: 'LOGIN_PORTAL_REDIRECT',
+              performedBy: currentUser.uid,
+              timestamp: serverTimestamp(),
+              details: `User ${currentUser.email} was automatically redirected from ${intendedRole} portal to their actual role: ${userData.role}.`
+            }).catch(e => console.warn("Log redirect fail:", e));
           } else {
             toast.success('Login berhasil!');
           }
@@ -811,6 +827,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     }
 
+    const userDocRef = doc(db, 'users', pendingRegistration.uid);
+    let originalCreatedAt = null;
+    try {
+      const snap = await getDoc(userDocRef);
+      if (snap.exists()) {
+        originalCreatedAt = snap.data().createdAt;
+      }
+    } catch (e) {
+      console.warn("Could not fetch original createdAt timestamp, fallback to serverTimestamp:", e);
+    }
+
     const newProfile: UserProfile = {
       uid: pendingRegistration.uid,
       email: email,
@@ -826,11 +853,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       notifEmail: true,
       notifWhatsApp: false,
       reminderMinutes: 30,
-      createdAt: serverTimestamp(),
+      createdAt: originalCreatedAt || serverTimestamp(),
     };
 
     await Promise.all([
-      setDoc(doc(db, 'users', pendingRegistration.uid), newProfile),
+      setDoc(userDocRef, newProfile),
       setDoc(doc(collection(db, 'audit_logs')), {
         action: 'REGISTER_COMPLETE',
         performedBy: pendingRegistration.uid,

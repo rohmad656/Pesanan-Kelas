@@ -158,7 +158,7 @@ export default function Register() {
                                  (role === 'dosen' && identifier.length === 18) || 
                                  (role === 'admin' && identifier.length > 0);
 
-  const isFormValid = identifier && !identifierError && isIdentifierLengthValid && whatsappNumber && !whatsappError && name && !isCheckingIdentifier && email && !emailError;
+  const isFormValid = identifier && !identifierError && isIdentifierLengthValid && (!whatsappNumber || !whatsappError) && name && !isCheckingIdentifier && email && !emailError;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -395,7 +395,7 @@ export default function Register() {
 
               {/* WhatsApp */}
               <div className="space-y-1.5">
-                <label className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-[#B4B4C8]">Nomor WhatsApp</label>
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-[#B4B4C8]">Nomor WhatsApp (Opsional)</label>
                 <div className="relative group">
                   <Phone className={cn(
                     "absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 transition-colors",
@@ -403,7 +403,6 @@ export default function Register() {
                   )} />
                   <input 
                     type="tel"
-                    required
                     value={whatsappNumber}
                     onChange={(e) => handleWhatsappChange(e.target.value)}
                     className={cn(
@@ -412,7 +411,7 @@ export default function Register() {
                         ? "border-red-500/50 text-red-500 focus:ring-2 focus:ring-red-500/10" 
                         : "border-transparent dark:border-[#3F3F5A]/30 focus:border-brand-400 dark:border-brand-dark-accent focus:ring-1 focus:ring-brand-dark-accent-light text-slate-900 dark:text-[#F5F5F5]"
                     )}
-                    placeholder="+628..."
+                    placeholder="+628... (Boleh dikosongkan)"
                   />
                 </div>
                 {whatsappError && (

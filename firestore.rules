@@ -331,11 +331,17 @@ service cloud.firestore {
     }
 
     match /notifications/{notificationId} {
-      allow read: if isAuthenticated() && (
+      allow get: if isAuthenticated() && (
         (resource.data.userId == request.auth.uid) || 
         (resource.data.targetRole == 'admin' && isStaff()) ||
         (resource.data.targetRole == 'staff' && isStaff()) ||
         (resource.data.targetRole != null && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && resource.data.targetRole == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role)
+      );
+      allow list: if isAuthenticated() && (
+        (resource.data.userId == request.auth.uid) ||
+        (resource.data.targetRole in ['mahasiswa', 'dosen']) ||
+        (resource.data.targetRole == 'staff' && isStaff()) ||
+        (resource.data.targetRole == 'admin' && isStaff())
       );
       allow create: if isAuthenticated() && (
                     (isValidNotification(request.resource.data) && (isStaff() || ('userId' in request.resource.data && request.resource.data.userId == request.auth.uid) || ('targetRole' in request.resource.data && request.resource.data.targetRole == 'admin')))
