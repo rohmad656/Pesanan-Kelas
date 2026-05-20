@@ -104,7 +104,7 @@ export default function VerifyEmail() {
             <p className="text-slate-500 dark:text-[#B4B4C8] text-sm leading-relaxed">
               Kami telah mengirimkan tautan verifikasi ke:
               <br />
-              <span className="text-brand-dark-accent font-bold break-all">{user.email}</span>
+              <span className="text-brand-dark-accent font-bold break-all">{profile?.pendingEmail || user.email}</span>
             </p>
           </div>
 
@@ -143,7 +143,16 @@ export default function VerifyEmail() {
 
           <div className="mt-10 pt-6 border-t border-slate-100 dark:border-[#3F3F5A]/20 text-center">
             <button 
-              onClick={() => logout()}
+              type="button"
+              onClick={async () => {
+                try {
+                  await logout();
+                } catch (e) {
+                  console.error(e);
+                } finally {
+                  navigate('/login', { replace: true });
+                }
+              }}
               className="text-xs text-slate-500 hover:text-slate-700 dark:text-[#B4B4C8] dark:hover:text-white transition-colors flex items-center justify-center gap-2 mx-auto font-medium"
             >
               <LogOut className="w-3.5 h-3.5" />

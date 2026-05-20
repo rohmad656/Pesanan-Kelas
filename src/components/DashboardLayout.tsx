@@ -23,7 +23,7 @@ import {
   CheckCircle2
 } from 'lucide-react';
 import { cn } from '../lib/utils';
-import { collection, query, where, onSnapshot, writeBatch, doc, serverTimestamp, updateDoc, or } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, writeBatch, doc, serverTimestamp, updateDoc, or, setDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import toast from 'react-hot-toast';
 import { PROJECT_NAME, SUPPORT_EMAIL, SUPPORT_EMAIL_ALT } from '../constants';
@@ -55,6 +55,24 @@ export default function DashboardLayout() {
     }, (error) => console.error("Admin contacts fetch error:", error));
     return () => unsubscribe();
   }, []);
+
+  // AUTO-SYNC ADMIN & STAFF CONTACTS: Sync credentials to directory immediately upon platform load/mounting
+  useEffect(() => {
+    if (profile && (profile.role === 'admin' || profile.role === 'staff')) {
+      if (profile.name && profile.whatsappNumber) {
+        setDoc(doc(db, 'admin_contacts', profile.uid), {
+          name: profile.name,
+          whatsapp: profile.whatsappNumber,
+          role: profile.role,
+          isActive: true,
+          staffId: profile.uid,
+          updatedAt: serverTimestamp()
+        }, { merge: true }).catch((err) => {
+          console.warn("Background help contact sync failed:", err);
+        });
+      }
+    }
+  }, [profile]);
 
   // PERSISTENT ROLE TRACKING: Sync role and persist it for session detection
   useEffect(() => {

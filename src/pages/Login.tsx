@@ -67,6 +67,8 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [registerEmail, setRegisterEmail] = useState('');
+  const [registerEmailError, setRegisterEmailError] = useState('');
 
   // Scroll Lock for Login Modal
   useEffect(() => {
@@ -81,14 +83,24 @@ export default function Login() {
   }, [isVisible]);
 
   const getIdentifierLabel = () => {
-    if (isForgotPassword && resetStep === 'EMAIL') return "Email atau NIM Akun";
+    if (isRegistering) {
+      if (role === 'mahasiswa') return "NIM Pendaftaran";
+      if (role === 'dosen') return "NIP Pendaftaran";
+      return "ID Staf Pendaftaran";
+    }
+    if (isForgotPassword && resetStep === 'EMAIL') return "Email, NIM atau NIP Akun";
     if (role === 'mahasiswa') return 'Email atau NIM';
     if (role === 'dosen') return 'Email atau NIP';
     return 'ID Staf atau Email';
   };
 
   const getIdentifierPlaceholder = () => {
-    if (isForgotPassword && resetStep === 'EMAIL') return "Masukkan Email atau NIM Anda";
+    if (isRegistering) {
+      if (role === 'mahasiswa') return "12 Digit Angka NIM";
+      if (role === 'dosen') return "18 Digit Angka NIP";
+      return "ID Staf / NIP Anda";
+    }
+    if (isForgotPassword && resetStep === 'EMAIL') return "Masukkan Email, NIM atau NIP Anda";
     if (role === 'mahasiswa') return 'mhs@kampus.ac.id / 123456';
     if (role === 'dosen') return 'dosen@kampus.ac.id / 987654';
     return 'admin@kampus.ac.id / STF001';
@@ -103,10 +115,32 @@ export default function Login() {
   const handleIdentifierChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
     setNim(val);
-    if (val && !validateEmail(val) && val.length > 5 && !val.match(/^[0-9A-Z]+$/i)) {
-      setValidationError('Format email atau ID mungkin tidak valid.');
+    if (isRegistering) {
+      if (role === 'mahasiswa') {
+        if (val && (!val.match(/^\d+$/) || val.length !== 12)) {
+          setValidationError('NIM harus berupa 12 digit angka.');
+        } else {
+          setValidationError('');
+        }
+      } else if (role === 'dosen') {
+        if (val && (!val.match(/^\d+$/) || val.length !== 18)) {
+          setValidationError('NIP harus berupa 18 digit angka.');
+        } else {
+          setValidationError('');
+        }
+      } else {
+        if (val && val.length === 0) {
+          setValidationError('ID Staf wajib diisi.');
+        } else {
+          setValidationError('');
+        }
+      }
     } else {
-      setValidationError('');
+      if (val && !validateEmail(val) && val.length > 5 && !val.match(/^[0-9A-Z]+$/i)) {
+        setValidationError('Format email atau ID mungkin tidak valid.');
+      } else {
+        setValidationError('');
+      }
     }
   };
 
@@ -190,13 +224,38 @@ export default function Login() {
           setError('');
         }
       } else if (isRegistering) {
+        if (!name) {
+          setError('Nama lengkap wajib diisi.');
+          setLoading(false);
+          return;
+        }
+        if (!registerEmail) {
+          setError('Alamat email wajib diisi.');
+          setLoading(false);
+          return;
+        }
+        if (!validateEmail(registerEmail)) {
+          setError('Format email tidak valid.');
+          setLoading(false);
+          return;
+        }
+        if (!password) {
+          setError('Kata sandi wajib diisi.');
+          setLoading(false);
+          return;
+        }
+        if (password.length < 8) {
+          setError('Kata sandi minimal harus 8 karakter.');
+          setLoading(false);
+          return;
+        }
         if (password !== confirmPassword) {
           setError('Konfirmasi kata sandi tidak cocok.');
           setLoading(false);
           return;
         }
-        await emailRegister(nim, password, name, role);
-        toast.success('Berhasil mendaftar dan masuk!');
+        await emailRegister(registerEmail, password, name, role);
+        toast.success('Pendaftaran berhasil! Silakan periksa email Anda untuk verifikasi.');
         handleExit('/dashboard');
       } else {
         setLoginStep('Mencari data akun...');
@@ -681,7 +740,46 @@ export default function Login() {
                     </motion.div>
                   )}
 
-                  {(!isForgotPassword || (resetStep === 'EMAIL' && resetStep !== 'SUCCESS')) && (
+                  {isRegistering && (
+                    <motion.div 
+                      key="register-email"
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="space-y-1.5"
+                    >
+                      <label htmlFor="registerEmail" className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">Alamat Email</label>
+                      <div className="relative group">
+                        <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500 group-focus-within:text-brand-600 dark:text-brand-dark-accent transition-colors" aria-hidden="true" />
+                        <input 
+                          id="registerEmail"
+                          type="email"
+                          required
+                          value={registerEmail}
+                          onChange={(e) => {
+                            setRegisterEmail(e.target.value);
+                            if (e.target.value && !validateEmail(e.target.value)) {
+                              setRegisterEmailError('Format email tidak valid.');
+                            } else {
+                              setRegisterEmailError('');
+                            }
+                          }}
+                          className={cn(
+                            "w-full pl-10 pr-4 py-3.5 bg-slate-50 dark:bg-[#1E1E2F] border rounded-xl focus:outline-none focus:ring-2 transition-all text-slate-900 dark:text-[#F5F5F5] placeholder:text-slate-400/70",
+                            registerEmailError ? "border-red-500/50 focus:border-red-500 focus:ring-red-500" : "border-slate-200 dark:border-[#3F3F5A]/30 focus:border-brand-500 dark:border-brand-dark-accent focus:ring-brand-500/50"
+                          )}
+                          placeholder="nama@email.com"
+                        />
+                      </div>
+                      {registerEmailError && (
+                        <p className="text-xs text-red-400 flex items-center gap-1 mt-1">
+                          <AlertCircle className="w-3 h-3" /> {registerEmailError}
+                        </p>
+                      )}
+                    </motion.div>
+                  )}
+
+                  {!isRegistering && (!isForgotPassword || (resetStep === 'EMAIL' && resetStep !== 'SUCCESS')) && (
                     <motion.div 
                       key="main-identifier"
                       initial={{ opacity: 0, x: -10 }}
@@ -856,7 +954,7 @@ export default function Login() {
             >
               <button 
                 type="submit"
-                disabled={loading || !!validationError}
+                disabled={loading || (!isRegistering && !!validationError) || (isRegistering && !!registerEmailError)}
                 className="w-full py-3.5 bg-brand-dark-accent-light hover:bg-brand-dark-accent-hover hover:scale-[1.02] hover:shadow-[0_0_15px_rgba(209,166,255,0.4)] active:scale-[0.98] text-brand-dark-on-accent font-bold rounded-lg shadow-lg shadow-brand-dark-accent-light/20 transition-all flex items-center justify-center gap-2 group disabled:opacity-50 disabled:hover:scale-100 disabled:hover:shadow-none focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-dark-accent-light focus:ring-offset-[#20082b]"
               >
                 {loading ? (

@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { collection, query, onSnapshot, addDoc, updateDoc, deleteDoc, doc, serverTimestamp } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../lib/firebase';
-import { Plus, Edit2, Trash2, XCircle } from 'lucide-react';
+import { Plus, Edit2, Trash2, XCircle, Search, Filter } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { AnimatePresence, motion } from 'motion/react';
 
 import BaseModal from '../../components/BaseModal';
 import ImageUpload from '../../components/ImageUpload';
@@ -12,6 +13,15 @@ export default function ManageRooms() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingRoom, setEditingRoom] = useState<any | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+
+  // Filter & Search states
+  const [searchTerm, setSearchTerm] = useState('');
+  const [showFilters, setShowFilters] = useState(false);
+  const [filterCapacity, setFilterCapacity] = useState('');
+  const [filterBuilding, setFilterBuilding] = useState('');
+  const [filterFloor, setFilterFloor] = useState('');
+  const [filterStatus, setFilterStatus] = useState('all');
+
   const [formData, setFormData] = useState({
     name: '',
     building: '',
@@ -27,6 +37,13 @@ export default function ManageRooms() {
     const q = query(collection(db, 'rooms'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const roomsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      roomsData.sort((a: any, b: any) => {
+        const bComp = (a.building || '').localeCompare(b.building || '', 'id');
+        if (bComp !== 0) return bComp;
+        const fComp = (Number(a.floor) || 0) - (Number(b.floor) || 0);
+        if (fComp !== 0) return fComp;
+        return (a.name || '').localeCompare(b.name || '', 'id');
+      });
       setRooms(roomsData);
     }, (error) => {
       handleFirestoreError(error, OperationType.GET, 'rooms');
@@ -53,11 +70,13 @@ export default function ManageRooms() {
     try {
       if (editingRoom) {
         await updateDoc(doc(db, 'rooms', editingRoom.id), roomData);
+        toast.success(`Ruangan "${formData.name}" berhasil diperbarui.`);
       } else {
         await addDoc(collection(db, 'rooms'), {
           ...roomData,
           createdAt: serverTimestamp()
         });
+        toast.success(`Ruangan "${formData.name}" baru berhasil ditambahkan.`);
       }
       setIsModalOpen(false);
       setEditingRoom(null);
@@ -95,6 +114,23 @@ export default function ManageRooms() {
     setIsModalOpen(true);
   };
 
+  // Filtering Logic
+  const filteredRooms = rooms.filter(room => {
+    const matchesSearch = 
+      !searchTerm ||
+      room.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      room.building?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      room.facilities?.some((f: string) => f.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      room.rules?.toLowerCase().includes(searchTerm.toLowerCase());
+
+    const matchesCapacity = filterCapacity ? room.capacity >= Number(filterCapacity) : true;
+    const matchesBuilding = filterBuilding ? room.building?.toLowerCase().includes(filterBuilding.toLowerCase()) : true;
+    const matchesFloor = filterFloor ? room.floor === Number(filterFloor) : true;
+    const matchesStatus = filterStatus === 'all' ? true : room.status === filterStatus;
+
+    return matchesSearch && matchesCapacity && matchesBuilding && matchesFloor && matchesStatus;
+  });
+
   return (
     <div className="animate-fade-in space-y-6">
       <div className="flex justify-between items-center">
@@ -114,6 +150,86 @@ export default function ManageRooms() {
         </button>
       </div>
 
+      {/* Filter and Search Controls */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="flex flex-1 items-center gap-2 max-w-xl">
+          <div className="relative flex-1">
+            <Search className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-600 dark:text-[#B4B4C8]" />
+            <input 
+              type="text"
+              placeholder="Cari nama ruangan, gedung, atau fasilitas..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-10 pr-4 py-2 w-full bg-white dark:bg-[#27273A] dark:shadow-lg dark:shadow-black/20 border border-slate-200 dark:border-[#3F3F5A]/50 rounded-xl text-slate-900 dark:text-[#F5F5F5] placeholder:text-slate-600 dark:placeholder:text-[#B4B4C8]/50 focus:outline-none focus:border-brand-400 dark:border-brand-dark-accent focus:ring-1 focus:ring-brand-dark-accent-light transition-all"
+            />
+          </div>
+          <button 
+            type="button"
+            onClick={() => setShowFilters(!showFilters)}
+            className={`p-2 border rounded-xl hover:scale-105 active:scale-95 transition-all flex items-center gap-1.5 ${showFilters ? 'bg-brand-dark-accent-light text-brand-dark-on-accent border-brand-400 dark:border-brand-dark-accent' : 'bg-white dark:bg-[#27273A] dark:shadow-lg dark:shadow-black/20 border-slate-200 dark:border-[#3F3F5A]/50 text-slate-600 dark:text-[#B4B4C8] hover:text-brand-700 dark:text-brand-dark-accent hover:border-brand-400'}`}
+          >
+            <Filter className="w-5 h-5" />
+            <span className="text-xs font-bold hidden sm:inline">Filter</span>
+          </button>
+        </div>
+      </div>
+
+      <AnimatePresence>
+        {showFilters && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            className="overflow-hidden"
+          >
+            <div className="p-4 bg-white dark:bg-[#27273A] dark:shadow-lg dark:shadow-black/20 border border-slate-200 dark:border-[#3F3F5A]/50 rounded-xl grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-[#B4B4C8]">Gedung</label>
+                <input
+                  type="text"
+                  value={filterBuilding}
+                  onChange={(e) => setFilterBuilding(e.target.value)}
+                  placeholder="Contoh: Gedung A"
+                  className="w-full px-3 py-2 bg-brand-100 dark:bg-[#32324A] border border-slate-200 dark:border-[#3F3F5A]/50 rounded-lg text-slate-900 dark:text-[#F5F5F5] focus:outline-none focus:border-brand-400 dark:border-brand-dark-accent"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-[#B4B4C8]">Lantai</label>
+                <input
+                  type="number"
+                  value={filterFloor}
+                  onChange={(e) => setFilterFloor(e.target.value)}
+                  placeholder="Contoh: 1"
+                  className="w-full px-3 py-2 bg-brand-100 dark:bg-[#32324A] border border-slate-200 dark:border-[#3F3F5A]/50 rounded-lg text-slate-900 dark:text-[#F5F5F5] focus:outline-none focus:border-brand-400 dark:border-brand-dark-accent"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-[#B4B4C8]">Kapasitas Min</label>
+                <input
+                  type="number"
+                  value={filterCapacity}
+                  onChange={(e) => setFilterCapacity(e.target.value)}
+                  placeholder="Contoh: 30"
+                  className="w-full px-3 py-2 bg-brand-100 dark:bg-[#32324A] border border-slate-200 dark:border-[#3F3F5A]/50 rounded-lg text-slate-900 dark:text-[#F5F5F5] focus:outline-none focus:border-brand-400 dark:border-brand-dark-accent"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-[#B4B4C8]">Status</label>
+                <select
+                  value={filterStatus}
+                  onChange={(e) => setFilterStatus(e.target.value)}
+                  className="w-full px-3 py-2 bg-brand-100 dark:bg-[#32324A] border border-slate-200 dark:border-[#3F3F5A]/50 rounded-lg text-slate-900 dark:text-[#F5F5F5] focus:outline-none focus:border-brand-400 dark:border-brand-dark-accent"
+                >
+                  <option value="all">Semua Status</option>
+                  <option value="available">Tersedia</option>
+                  <option value="maintenance">Perbaikan</option>
+                </select>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <div className="bg-white dark:bg-[#27273A] dark:shadow-lg dark:shadow-black/20 rounded-2xl border border-slate-200 dark:border-[#3F3F5A]/30 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-slate-600 dark:text-[#B4B4C8]">
@@ -127,7 +243,7 @@ export default function ManageRooms() {
               </tr>
             </thead>
             <tbody className="divide-y divide-[#603770]/30">
-              {rooms.map(room => (
+              {filteredRooms.map(room => (
                 <tr key={room.id} className="hover:bg-slate-50 dark:hover:bg-[#32324A] transition-colors">
                   <td className="px-6 py-4 font-medium text-slate-900 dark:text-[#F5F5F5]">{room.name}</td>
                   <td className="px-6 py-4">{room.building} Lt. {room.floor}</td>
@@ -149,9 +265,11 @@ export default function ManageRooms() {
                   </td>
                 </tr>
               ))}
-              {rooms.length === 0 && (
+              {filteredRooms.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-6 py-8 text-center">Belum ada data ruangan.</td>
+                  <td colSpan={5} className="px-6 py-8 text-center">
+                    {rooms.length === 0 ? 'Belum ada data ruangan.' : 'Tidak ada ruangan yang cocok dengan kriteria pencarian/filter.'}
+                  </td>
                 </tr>
               )}
             </tbody>

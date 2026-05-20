@@ -45,12 +45,7 @@ const ProtectedRoute = ({ children, allowedRoles }: { children: React.ReactNode,
   // Check email verification
   const isEmailVerified = user.emailVerified || user.providerData.some(p => p.providerId === 'google.com');
   if (!isEmailVerified && location.pathname !== '/verifikasi-email') {
-    return <Navigate to="/verifikasi-email" />;
-  }
-
-  // Redirect to profile if not completed, unless already on profile page or is admin
-  if (profile.profileCompleted === false && location.pathname !== '/profil' && profile.role !== 'admin') {
-    return <Navigate to="/profil" />;
+    return <Navigate to="/verifikasi-email" replace />;
   }
 
   if (allowedRoles && !allowedRoles.includes(profile.role)) {

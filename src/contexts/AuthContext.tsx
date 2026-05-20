@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
 import { User as FirebaseUser, onAuthStateChanged, signInWithPopup, signOut, signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail, updateEmail, updateProfile as updateAuthProfile, confirmPasswordReset, verifyPasswordResetCode, updatePassword, verifyBeforeUpdateEmail, sendEmailVerification, signInWithRedirect, getRedirectResult } from 'firebase/auth';
 import { doc, getDoc, setDoc, serverTimestamp, collection, query, where, getDocs, updateDoc, onSnapshot, Timestamp, deleteDoc } from 'firebase/firestore';
 import { auth, db, googleProvider, handleFirestoreError, OperationType } from '../lib/firebase';
@@ -69,9 +69,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [pendingRegistration, setPendingRegistration] = useState<{ uid: string, email: string, name: string, photoURL: string, role?: Role } | null>(null);
   const [conflictInfo, setConflictInfo] = useState<ConflictInfo | null>(null);
   const [loading, setLoading] = useState(true);
+  const unsubscribeProfileRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
-    let unsubscribeProfile: (() => void) | null = null;
 
     // Handle Redirect Results (Optional but helpful for slow iFrame popup issues)
     getRedirectResult(auth).then(async (result) => {
@@ -90,7 +90,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         
         // Listen to profile changes in real-time
         const docRef = doc(db, 'users', currentUser.uid);
-        unsubscribeProfile = onSnapshot(docRef, async (docSnap) => {
+        unsubscribeProfileRef.current = onSnapshot(docRef, async (docSnap) => {
           if (docSnap.exists()) {
             const data = docSnap.data() as UserProfile & { deleted?: boolean };
             if (data.deleted) {
@@ -151,13 +151,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
               setProfile(data as UserProfile);
               localStorage.setItem('user_profile', JSON.stringify(data));
+
+              if (data.profileCompleted === false) {
+                setPendingRegistration({
+                  uid: currentUser.uid,
+                  email: data.email || currentUser.email || '',
+                  name: data.name || currentUser.displayName || '',
+                  photoURL: data.photoURL || currentUser.photoURL || '',
+                  role: data.role
+                });
+              }
             }
           } else {
             setProfile(null);
           }
           setLoading(false);
         }, (error) => {
-          handleFirestoreError(error, OperationType.GET, `users/${currentUser.uid}`);
+          if (error.message.includes('permission') || error.message.includes('insufficient')) {
+            console.warn("[AUTH] Profile snapshot permission denied (usually happens during logout or account deletion):", error.message);
+          } else {
+            handleFirestoreError(error, OperationType.GET, `users/${currentUser.uid}`);
+          }
           setLoading(false);
         });
       } else {
@@ -165,9 +179,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setProfile(null);
         setPendingRegistration(null);
         localStorage.removeItem('user_profile');
-        if (unsubscribeProfile) {
-          unsubscribeProfile();
-          unsubscribeProfile = null;
+        if (unsubscribeProfileRef.current) {
+          unsubscribeProfileRef.current();
+          unsubscribeProfileRef.current = null;
         }
         setLoading(false);
       }
@@ -175,7 +189,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     return () => {
       unsubscribeAuth();
-      if (unsubscribeProfile) unsubscribeProfile();
+      if (unsubscribeProfileRef.current) unsubscribeProfileRef.current();
     };
   }, []);
 
@@ -236,9 +250,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       // ROLE VALIDATION (Post-Login Context Check)
       if (intendedRole && userData.role !== intendedRole) {
-        // Unify staff/admin check for 'admin' portal
-        const isStaffAdminMismatch = (intendedRole === 'admin' && (userData.role === 'admin' || userData.role === 'staff'));
-        if (!isStaffAdminMismatch) {
+        // Admins and staff are allowed to log in from any portal/tab
+        if (userData.role !== 'admin' && userData.role !== 'staff') {
           const msg = `Gagal Masuk: Portal ini untuk ${intendedRole.toUpperCase()}, tetapi akun Anda memiliki peran ${userData.role.toUpperCase()}. Silakan gunakan portal yang tepat.`;
           toast.error(msg, { duration: 5000 });
           
@@ -358,6 +371,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       email: currentUser.email || email,
       name: name,
       role: finalRole,
+      nim: '',
+      whatsappNumber: '',
       profileCompleted: false,
       notifPortal: true,
       notifEmail: true,
@@ -365,10 +380,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       reminderMinutes: 30,
       createdAt: serverTimestamp(),
     };
-    
-    if (!emailOrId.includes('@')) {
-      newProfile.nim = emailOrId;
-    }
     
     try {
       await setDoc(doc(db, 'users', currentUser.uid), newProfile);
@@ -619,10 +630,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         // --- PREVENT DUPLICATE PROFILES VIA EMAIL COLLISION ---
         // Check if an existing profile uses this email under a DIFFERENT UID
         // (e.g., a NIM user who updated email but hasn't linked Google yet)
-        const qEmail = query(collection(db, 'users'), where('email', '==', email));
-        const emailSnap = await getDocs(qEmail);
+        const checkRes = await fetch(`/api/auth/check-email?email=${encodeURIComponent(email)}&excludeUid=${currentUser.uid}`);
+        let hasConflict = false;
+        if (checkRes.ok) {
+          const checkData = await checkRes.json();
+          if (!checkData.available && checkData.uid) {
+            hasConflict = true;
+          }
+        }
         
-        if (!emailSnap.empty) {
+        if (hasConflict) {
           console.warn("[AUTH] Profile with this email exists under different UID. Redirecting to link flow.");
           await signOut(auth);
           const error: any = new Error(`Email ${email} sudah terdaftar melalui NIM. Silakan login menggunakan NIM/Sandi, lalu buka halaman Profil untuk menghubungkan Akun Google agar bisa login dengan Google lain kali.`);
@@ -684,8 +701,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         // ROLE VALIDATION (Post-Login Context Check)
         if (intendedRole && userData.role !== intendedRole) {
-          const isStaffAdminMismatch = (intendedRole === 'admin' && (userData.role === 'admin' || userData.role === 'staff'));
-          if (!isStaffAdminMismatch) {
+          if (userData.role !== 'admin' && userData.role !== 'staff') {
             const msg = `Gagal Masuk: Portal ini untuk ${intendedRole.toUpperCase()}, tetapi akun Anda memiliki peran ${userData.role.toUpperCase()}. Silakan gunakan portal yang tepat.`;
             toast.error(msg, { duration: 5000 });
             
@@ -693,6 +709,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             err.code = 'custom/role-mismatch';
             err.actualRole = userData.role;
             throw err;
+          } else {
+            toast.success('Login berhasil!');
           }
         } else {
           toast.success('Login berhasil!');
@@ -749,7 +767,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // NIM Uniqueness Check via Server (Safe for authenticated non-staff)
     if (data.nim) {
       try {
-        const res = await fetch(`/api/auth/check-nim?nim=${encodeURIComponent(data.nim)}`);
+        const res = await fetch(`/api/auth/check-nim?nim=${encodeURIComponent(data.nim)}&excludeUid=${auth.currentUser.uid}`);
         if (res.ok) {
           const checkData = await res.json();
           if (!checkData.available) {
@@ -844,7 +862,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       localStorage.removeItem('user_role_last_session');
       localStorage.removeItem('intended_role');
       setPendingRegistration(null);
-      await signOut(auth);
+      if (unsubscribeProfileRef.current) {
+        unsubscribeProfileRef.current();
+        unsubscribeProfileRef.current = null;
+      }
+      await signOut(auth).catch(() => {});
     } catch (error) {
       console.error('Logout error:', error);
       // Fallback for safety
@@ -856,8 +878,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const resendVerification = async () => {
     if (!auth.currentUser) return;
     try {
-      await sendEmailVerification(auth.currentUser);
-      toast.success('Email verifikasi telah dikirim ulang. Silakan cek kotak masuk Anda.');
+      if (profile?.pendingEmail) {
+        await verifyBeforeUpdateEmail(auth.currentUser, profile.pendingEmail);
+        toast.success(`Email verifikasi perubahan telah dikirim ulang ke ${profile.pendingEmail}. Silakan cek kotak masuk Anda.`);
+      } else {
+        await sendEmailVerification(auth.currentUser);
+        toast.success('Email verifikasi telah dikirim ulang. Silakan cek kotak masuk Anda.');
+      }
     } catch (error: any) {
       console.error("Resend verification failed", error);
       if (error.code === 'auth/too-many-requests') {

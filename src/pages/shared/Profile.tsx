@@ -14,7 +14,8 @@ import {
   RefreshCw,
   Clock,
   XCircle,
-  HelpCircle
+  HelpCircle,
+  Link
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { db } from '../../lib/firebase';
@@ -523,21 +524,6 @@ export default function Profile() {
               </h3>
               <div className="space-y-5">
                 <div className="space-y-4">
-                  {!isGoogleLinked && (
-                    <div className="flex justify-between items-center">
-                      <div>
-                        <p className="text-sm font-bold text-slate-700 dark:text-[#F5F5F5]">Akun Google Belum Terhubung</p>
-                        <p className="text-[10px] text-slate-500">Hubungkan untuk dapat masuk menggunakan Akun Google di masa mendatang.</p>
-                      </div>
-                      <button 
-                        onClick={handleLinkGoogle}
-                        className="flex items-center gap-2 px-3 py-1.5 bg-brand-600 hover:bg-brand-700 text-white rounded-lg shadow-sm text-[10px] font-bold transition-all active:scale-95"
-                      >
-                        Hubungkan Google
-                      </button>
-                    </div>
-                  )}
-                  
                   <div className="flex justify-between items-center">
                     <p className="text-sm font-bold text-slate-700 dark:text-[#F5F5F5]">Kanal Notifikasi</p>
                     <span className={cn(
@@ -634,67 +620,114 @@ export default function Profile() {
           </form>
         </div>
 
-        {/* Role Management Card */}
-        {profile?.role !== 'admin' && (
-          <div className="bg-white dark:bg-[#27273A] dark:shadow-lg dark:shadow-black/20 border border-slate-200 dark:border-[#3F3F5A]/30 rounded-2xl p-6 space-y-4 h-fit">
+        <div className="space-y-6 md:col-span-1 h-fit">
+          {/* Google Integration Card */}
+          <div className="bg-white dark:bg-[#27273A] dark:shadow-lg dark:shadow-black/20 border border-slate-200 dark:border-[#3F3F5A]/30 rounded-2xl p-6 space-y-4">
             <h3 className="text-sm font-bold text-slate-900 dark:text-[#F5F5F5] uppercase tracking-wider flex items-center gap-2">
-              <ShieldCheck className="w-5 h-5 text-brand-600 dark:text-brand-dark-accent" /> Manajemen Peran
+              <Link className="w-5 h-5 text-brand-600 dark:text-brand-dark-accent" /> Akun Google Terhubung
             </h3>
             
             <p className="text-xs text-slate-500 dark:text-[#B4B4C8] leading-relaxed">
-              Jika peran akun Anda saat ini (<strong>{profile.role.toUpperCase()}</strong>) tidak sesuai, Anda dapat mengajukan permintaan perubahan ke Admin Kampus.
+              Dengan menghubungkan akun Google (Gmail) Anda, Anda dapat melakukan login secara praktis dan instan satu kali klik di masa mendatang tanpa perlu repot mengetik NIM/NIP dan Kata Sandi Anda secara manual.
             </p>
 
-            <button
-              onClick={() => setIsRoleModalOpen(true)}
-              disabled={roleRequests.some(r => r.status === 'pending')}
-              className="w-full py-2.5 bg-slate-100 dark:bg-[#32324A] text-brand-700 dark:text-brand-dark-accent font-bold rounded-xl hover:bg-brand-50 dark:hover:bg-[#3F3F5A] transition-all hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-2 border border-brand-100 dark:border-brand-900/30 shadow-sm hover:shadow-md disabled:opacity-50 disabled:scale-100"
-            >
-              <RefreshCw className="w-4 h-4" />
-              Ajukan Perubahan Peran
-            </button>
-
-            {roleRequests.length > 0 && (
-              <div className="pt-4 space-y-3">
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Riwayat Permintaan</p>
-                <div className="space-y-2">
-                  {roleRequests.slice(0, 3).map((req) => (
-                    <div key={req.id} className="p-3 bg-slate-50 dark:bg-[#1E1E2F] rounded-xl border border-slate-100 dark:border-[#3F3F5A]/20">
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-[10px] font-bold text-slate-500 uppercase">{req.requestedRole}</span>
-                        <div className="flex items-center gap-1.5">
-                          {req.status === 'pending' ? (
-                            <Clock className="w-3 h-3 text-amber-500" />
-                          ) : req.status === 'approved' ? (
-                            <CheckCircle2 className="w-3 h-3 text-green-500" />
-                          ) : (
-                            <XCircle className="w-3 h-3 text-red-500" />
-                          )}
-                          <span className={cn(
-                            "text-[10px] font-bold uppercase",
-                            req.status === 'pending' ? "text-amber-500" :
-                            req.status === 'approved' ? "text-green-500" :
-                            "text-red-500"
-                          )}>
-                            {req.status === 'pending' ? 'Menunggu' : req.status === 'approved' ? 'Disetujui' : 'Ditolak'}
-                          </span>
-                        </div>
-                      </div>
-                      <p className="text-[10px] text-slate-400">
-                        {req.createdAt ? new Date(req.createdAt.toMillis()).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Baru'}
-                      </p>
-                      {req.status === 'rejected' && req.rejectReason && (
-                        <p className="mt-2 text-[10px] text-red-500 italic border-l-2 border-red-500/30 pl-2">
-                          "{req.rejectReason}"
-                        </p>
-                      )}
-                    </div>
-                  ))}
+            {isGoogleLinked ? (
+              <div className="space-y-3">
+                <div className="p-3 bg-green-500/5 dark:bg-green-500/10 rounded-xl border border-green-500/20 flex items-center gap-3">
+                  <CheckCircle2 className="w-5 h-5 text-green-500 shrink-0" />
+                  <div>
+                    <p className="text-[11px] font-bold text-green-600 dark:text-green-400">Telah Terintegrasi</p>
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400 break-all">{user?.email}</p>
+                  </div>
                 </div>
+                <p className="text-[10px] text-slate-400 leading-normal">
+                  Sangat baik! Anda sekarang dapat masuk menggunakan tombol <strong>Masuk dengan Google</strong> secara langsung kapan saja.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div className="p-3 bg-slate-50 dark:bg-[#1E1E2F] rounded-xl border border-slate-200 dark:border-[#3F3F5A]/30 flex items-center gap-3">
+                  <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0" />
+                  <div>
+                    <p className="text-[11px] font-bold text-amber-600 dark:text-amber-400">Belum Terhubung</p>
+                    <p className="text-[10px] text-slate-500 dark:text-[#B4B4C8]">Gunakan Google Login instan di waktu berikutnya.</p>
+                  </div>
+                </div>
+                
+                <button
+                  type="button"
+                  onClick={handleLinkGoogle}
+                  className="w-full py-2.5 bg-brand-dark-accent-light text-brand-dark-on-accent font-bold rounded-xl hover:bg-brand-dark-accent-hover transition-all hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-2 shadow-sm border border-brand-500/20 text-xs"
+                >
+                  <Link className="w-4 h-4" />
+                  Hubungkan Google
+                </button>
               </div>
             )}
           </div>
-        )}
+
+          {/* Role Management Card */}
+          {profile?.role !== 'admin' && (
+            <div className="bg-white dark:bg-[#27273A] dark:shadow-lg dark:shadow-black/20 border border-slate-200 dark:border-[#3F3F5A]/30 rounded-2xl p-6 space-y-4">
+              <h3 className="text-sm font-bold text-slate-900 dark:text-[#F5F5F5] uppercase tracking-wider flex items-center gap-2">
+                <ShieldCheck className="w-5 h-5 text-brand-600 dark:text-brand-dark-accent" /> Manajemen Peran
+              </h3>
+              
+              <p className="text-xs text-slate-500 dark:text-[#B4B4C8] leading-relaxed">
+                Jika peran akun Anda saat ini (<strong>{profile.role.toUpperCase()}</strong>) tidak sesuai, Anda dapat mengajukan permintaan perubahan ke Admin Kampus.
+              </p>
+
+              <button
+                onClick={() => setIsRoleModalOpen(true)}
+                disabled={roleRequests.some(r => r.status === 'pending')}
+                className="w-full py-2.5 bg-slate-100 dark:bg-[#32324A] text-brand-700 dark:text-brand-dark-accent font-bold rounded-xl hover:bg-brand-50 dark:hover:bg-[#3F3F5A] transition-all hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-2 border border-brand-100 dark:border-brand-900/30 shadow-sm hover:shadow-md disabled:opacity-50 disabled:scale-100 text-xs"
+              >
+                <RefreshCw className="w-4 h-4" />
+                Ajukan Perubahan Peran
+              </button>
+
+              {roleRequests.length > 0 && (
+                <div className="pt-4 space-y-3">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Riwayat Permintaan</p>
+                  <div className="space-y-2">
+                    {roleRequests.slice(0, 3).map((req) => (
+                      <div key={req.id} className="p-3 bg-slate-50 dark:bg-[#1E1E2F] rounded-xl border border-slate-100 dark:border-[#3F3F5A]/20">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-[10px] font-bold text-slate-500 uppercase">{req.requestedRole}</span>
+                          <div className="flex items-center gap-1.5">
+                            {req.status === 'pending' ? (
+                              <Clock className="w-3 h-3 text-amber-500" />
+                            ) : req.status === 'approved' ? (
+                              <CheckCircle2 className="w-3 h-3 text-green-500" />
+                            ) : (
+                              <XCircle className="w-3 h-3 text-red-500" />
+                            )}
+                            <span className={cn(
+                              "text-[10px] font-bold uppercase",
+                              req.status === 'pending' ? "text-amber-500" :
+                              req.status === 'approved' ? "text-green-500" :
+                              "text-red-500"
+                            )}>
+                              {req.status === 'pending' ? 'Menunggu' : req.status === 'approved' ? 'Disetujui' : 'Ditolak'}
+                            </span>
+                          </div>
+                        </div>
+                        <p className="text-[10px] text-slate-400">
+                          {req.createdAt ? new Date(req.createdAt.toMillis()).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Baru'}
+                        </p>
+                        {req.status === 'rejected' && req.rejectReason && (
+                          <p className="mt-2 text-[10px] text-red-500 italic border-l-2 border-red-500/30 pl-2">
+                            "{req.rejectReason}"
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       <RoleChangeModal 

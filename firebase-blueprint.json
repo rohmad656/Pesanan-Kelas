@@ -155,6 +155,7 @@
         "whatsapp": { "type": "string" },
         "role" : { "type": "string" },
         "isActive" : { "type": "boolean" },
+        "staffId": { "type": "string" },
         "updatedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["name", "whatsapp"]

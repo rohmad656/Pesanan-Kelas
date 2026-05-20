@@ -36,6 +36,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const qRooms = query(collection(db, 'rooms'));
     const unsubRooms = onSnapshot(qRooms, (snapshot) => {
       const roomsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      roomsData.sort((a: any, b: any) => {
+        const bComp = (a.building || '').localeCompare(b.building || '', 'id');
+        if (bComp !== 0) return bComp;
+        const fComp = (Number(a.floor) || 0) - (Number(b.floor) || 0);
+        if (fComp !== 0) return fComp;
+        return (a.name || '').localeCompare(b.name || '', 'id');
+      });
       setRooms(roomsData);
       setLoadingRooms(false);
     }, (error) => {

@@ -1,5 +1,6 @@
 {
   "name": "Kampus Booking",
   "description": "Sistem pemesanan ruangan dan jadwal perkuliahan kampus yang efisien dan terintegrasi.",
-  "requestFramePermissions": []
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

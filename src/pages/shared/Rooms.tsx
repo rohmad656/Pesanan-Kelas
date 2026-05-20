@@ -133,13 +133,48 @@ export default function Rooms() {
   }).sort((a, b) => {
     if (sortBy === 'capacity-asc') return a.capacity - b.capacity;
     if (sortBy === 'capacity-desc') return b.capacity - a.capacity;
-    if (sortBy === 'location') return a.building.localeCompare(b.building);
-    return a.name.localeCompare(b.name);
+    if (sortBy === 'location') {
+      const bComp = (a.building || '').localeCompare(b.building || '', 'id');
+      if (bComp !== 0) return bComp;
+      const fComp = (Number(a.floor) || 0) - (Number(b.floor) || 0);
+      if (fComp !== 0) return fComp;
+      return (a.name || '').localeCompare(b.name || '', 'id');
+    }
+    // Default: Sort by room name, then building, then floor
+    const nComp = (a.name || '').localeCompare(b.name || '', 'id');
+    if (nComp !== 0) return nComp;
+    const bComp = (a.building || '').localeCompare(b.building || '', 'id');
+    if (bComp !== 0) return bComp;
+    return (Number(a.floor) || 0) - (Number(b.floor) || 0);
   });
 
   const handleBooking = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedRoom || !profile || !user || !selectedDate || !selectedSlot || !bookingReason) return;
+    
+    if (!profile || !user) {
+      toast.error('Sesi tidak valid, silakan masuk log kembali.');
+      return;
+    }
+
+    if (!selectedRoom) {
+      toast.error('Silakan pilih ruangan terlebih dahulu.');
+      return;
+    }
+
+    if (!selectedDate) {
+      toast.error('Silakan pilih tanggal pemesanan ruangan.');
+      return;
+    }
+
+    if (!selectedSlot) {
+      toast.error('Silakan pilih jam / slot waktu peminjaman.');
+      return;
+    }
+
+    if (!bookingReason || bookingReason.trim() === '') {
+      toast.error('Silakan isi alasan peminjaman ruangan.');
+      return;
+    }
 
     if (!profile.profileCompleted && profile.role !== 'admin') {
       toast.error('Lengkapi profil Anda terlebih dahulu sebelum melakukan pemesanan.');

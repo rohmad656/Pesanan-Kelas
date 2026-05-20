@@ -43,8 +43,16 @@ export default function ReportIssueModal({ isOpen, onClose, initialRoomId, initi
       const roomsData = snapshot.docs.map(doc => ({
         id: doc.id,
         name: doc.data().name,
-        building: doc.data().building
+        building: doc.data().building,
+        floor: doc.data().floor
       }));
+      roomsData.sort((a: any, b: any) => {
+        const bComp = (a.building || '').localeCompare(b.building || '', 'id');
+        if (bComp !== 0) return bComp;
+        const fComp = (Number(a.floor) || 0) - (Number(b.floor) || 0);
+        if (fComp !== 0) return fComp;
+        return (a.name || '').localeCompare(b.name || '', 'id');
+      });
       setRooms(roomsData);
     } catch (error) {
       console.error("Error fetching rooms:", error);

@@ -118,14 +118,14 @@ export default function Register() {
     const checkIdentifier = async () => {
       setIsCheckingIdentifier(true);
       try {
-        const { getDocs, collection, query, where } = await import('firebase/firestore');
-        const { db } = await import('../lib/firebase');
-        
-        const q = query(collection(db, 'users'), where('nim', '==', identifier));
-        const snap = await getDocs(q);
-        
-        if (!snap.empty) {
-          setIdentifierError(`${getIdentifierLabel()} ini sudah terpakai oleh akun lain.`);
+        const res = await fetch(`/api/auth/check-nim?nim=${encodeURIComponent(identifier)}`);
+        if (res.ok) {
+          const checkData = await res.json();
+          if (!checkData.available) {
+            setIdentifierError(`${getIdentifierLabel()} ini sudah terpakai oleh akun lain.`);
+          } else {
+            setIdentifierError('');
+          }
         } else {
           setIdentifierError('');
         }
@@ -183,15 +183,16 @@ export default function Register() {
     }
   };
 
-  const handleGoBack = () => {
+  const handleGoBack = async () => {
     setLoading(true);
-    logout()
-      .then(() => {
-        navigate('/login', { replace: true });
-      })
-      .finally(() => {
-        setLoading(false);
-      });
+    try {
+      await logout();
+    } catch (err) {
+      console.error("Gagal keluar:", err);
+    } finally {
+      setLoading(false);
+      navigate('/login', { replace: true });
+    }
   };
 
   if (!pendingRegistration) return null;
@@ -229,6 +230,7 @@ export default function Register() {
           {/* Back Button */}
           <div className="absolute top-6 left-6 z-10">
             <button 
+              type="button"
               onClick={handleGoBack}
               className="flex items-center text-slate-600 dark:text-[#B4B4C8] hover:text-brand-700 dark:hover:text-brand-dark-accent transition-all duration-300 group"
             >
@@ -443,6 +445,7 @@ export default function Register() {
 
             <div className="mt-6 pt-4 border-t border-slate-100 dark:border-[#3F3F5A]/20 text-center">
               <button 
+                type="button"
                 onClick={handleGoBack}
                 className="text-xs text-slate-500 hover:text-slate-700 dark:text-[#B4B4C8] dark:hover:text-white transition-colors font-medium"
               >
